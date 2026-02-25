@@ -12,6 +12,7 @@ class BlufiPage extends StatefulWidget {
 }
 class _BlufiPageState extends State<BlufiPage> {
   List<String> devices = [];
+  Map<String, String> deviceNames = {}; // Адрес: Имя
   bool isConnected = false;
   EspBlufi blufi = EspBlufi();
 
@@ -31,8 +32,16 @@ class _BlufiPageState extends State<BlufiPage> {
           // А) Обработка сканирования
           if (msg['key'] == 'ble_scan_result') {
             String address = msg['value']['address'];
-            if (!devices.contains(address)) {
-              setState(() => devices.add(address));
+            String name = msg['value']['name'] ?? "Unknown";
+          
+            // ФИЛЬТР: Добавляем только если в имени есть "BLUFI" или "ESP32"
+            if (name.toUpperCase().contains("BLUFI") || name.toUpperCase().contains("ESP32")) {
+              setState(() {
+                if (!devices.contains(address)) {
+                  devices.add(address);
+                  deviceNames[address] = name;
+                }
+              });
             }
           }
           
@@ -69,7 +78,16 @@ class _BlufiPageState extends State<BlufiPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("ESP32 Smart Home"), backgroundColor: Colors.blueGrey),
+      appBar: AppBar(
+        title: Text(isConnected ? "Мониторинг ESP32" : "Поиск устройств"),
+        backgroundColor: isConnected ? Colors.blueGrey : Colors.indigo,
+        leading: isConnected 
+          ? IconButton(icon: Icon(Icons.arrow_back), onPressed: disconnect) 
+          : Icon(Icons.bluetooth),
+        actions: [
+          if (!isConnected) IconButton(icon: Icon(Icons.refresh), onPressed: startScan)
+        ],
+      ),
       body: Column(
         children: [
           // Блок кнопок управления
@@ -90,10 +108,12 @@ class _BlufiPageState extends State<BlufiPage> {
               child: ListView.builder(
                 itemCount: devices.length,
                 itemBuilder: (ctx, i) => ListTile(
-                  title: Text(devices[i]),
-                  onTap: () => connect(devices[i]),
-                  trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                ),
+				  leading: Icon(Icons.developer_board, color: Colors.indigo),
+				  title: Text(deviceNames[devices[i]] ?? "Unknown Device"),
+				  subtitle: Text(devices[i]), // Здесь оставим MAC-адрес
+				  onTap: () => connect(devices[i]),
+				  trailing: Icon(Icons.link),
+				),
               ),
             ),
 
@@ -171,6 +191,19 @@ class _BlufiPageState extends State<BlufiPage> {
       print("Подключено!");
     } catch (e) {
       print("Не удалось подключиться: $e");
+    }
+  }
+  void disconnect() async {
+    print("Разрыв соединения...");
+    try {
+      await blufi.requestCloseConnection(); // Метод из grep
+      setState(() {
+        isConnected = false;
+        // devices.clear(); // Можно очистить список, чтобы найти заново
+      });
+    } catch (e) {
+      print("Ошибка при отключении: $e");
+      setState(() => isConnected = false); // Форсированный возврат
     }
   }
 

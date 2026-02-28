@@ -16,10 +16,15 @@ class _BlufiPageState extends State<BlufiPage> {
   bool isConnected = false;
   EspBlufi blufi = EspBlufi();
 
+  bool _passwordVisible = false; // По умолчанию пароль скрыт
   List<dynamic> wifiNetworks = [];
   String? selectedSSID;
   TextEditingController passwordController = TextEditingController();
   
+  String currentIP = "0.0.0.0";
+  String currentMask = "0.0.0.0";
+  String currentGW = "0.0.0.0";
+
 
   // Переменные для наших датчиков
   String ambTemp = "--";
@@ -54,12 +59,26 @@ class _BlufiPageState extends State<BlufiPage> {
           if (msg['key'] == 'receive_device_custom_data') {
             String raw = msg['value']; // Например "Amb_temp:24.5"
             
-            setState(() {
-              if (raw.startsWith("Amb_Temp:")) ambTemp = raw.split(":")[1];
-              if (raw.startsWith("Chip_Temp:")) chipTemp = raw.split(":")[1];
-              if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
-            });
+            if (raw.startsWith("NET:")) {
+              // Разрезаем строку по разделителям
+              List<String> parts = raw.substring(4).split("|");
+              if (parts.length == 3) {
+                setState(() {
+                  currentIP = parts[0];
+                  currentMask = parts[1];
+                  currentGW = parts[2];
+                });
+              }
+            }
+			else {
+              setState(() {
+                if (raw.startsWith("Amb_Temp:")) ambTemp = raw.split(":")[1];
+                if (raw.startsWith("Chip_Temp:")) chipTemp = raw.split(":")[1];
+                if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
+              });
+			}
           }
+
 		  // В. Сканирование Wifi
 		  if (msg['key'] == 'wifi_info') {
             // Данные приходят в формате {"ssid": "MyRouter", "rssi": -50}
@@ -207,14 +226,46 @@ class _BlufiPageState extends State<BlufiPage> {
                   if (selectedSSID != null) ...[
                     TextField(
                       controller: passwordController,
-                      decoration: InputDecoration(labelText: "Введите пароль"),
-                      obscureText: true,
+                      obscureText: !_passwordVisible, // Если false — скрываем текст (точечки)
+                      decoration: InputDecoration(
+                        labelText: "Пароль от Wi-Fi",
+                        border: OutlineInputBorder(), // Красивая рамка
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            // Меняем иконку в зависимости от состояния
+                            _passwordVisible ? Icons.visibility : Icons.visibility_off,
+                            color: Colors.blueGrey,
+                          ),
+                          onPressed: () {
+                            // Переключаем видимость при нажатии
+                            setState(() {
+                              _passwordVisible = !_passwordVisible;
+                            });
+                          },
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       onPressed: sendWifiCredentials,
                       child: Text("ПОДКЛЮЧИТЬ"),
+                    ),
+					Card(
+                      color: Colors.blueGrey[50],
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
+                            Divider(),
+                            Text("IP: $currentIP"),
+                            Text("Маска: $currentMask"),
+                            Text("Шлюз: $currentGW"),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ],

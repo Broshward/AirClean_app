@@ -16,6 +16,11 @@ class _BlufiPageState extends State<BlufiPage> {
   bool isConnected = false;
   EspBlufi blufi = EspBlufi();
 
+  List<dynamic> wifiNetworks = [];
+  String? selectedSSID;
+  TextEditingController passwordController = TextEditingController();
+  
+
   // Переменные для наших датчиков
   String ambTemp = "--";
   String chipTemp = "--";
@@ -29,7 +34,7 @@ class _BlufiPageState extends State<BlufiPage> {
         try {
           Map<String, dynamic> msg = jsonDecode(data!);
           
-          // А) Обработка сканирования
+          // А. Обработка сканирования
           if (msg['key'] == 'ble_scan_result') {
             String address = msg['value']['address'];
             String name = msg['value']['name'] ?? "Unknown";
@@ -45,7 +50,7 @@ class _BlufiPageState extends State<BlufiPage> {
             }
           }
           
-          // Б) Обработка данных от датчиков (Custom Data)
+          // Б. Обработка данных от датчиков (Custom Data)
           if (msg['key'] == 'receive_device_custom_data') {
             String raw = msg['value']; // Например "Amb_temp:24.5"
             
@@ -55,6 +60,24 @@ class _BlufiPageState extends State<BlufiPage> {
               if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
             });
           }
+		  // В. Сканирование Wifi
+		  if (msg['key'] == 'wifi_info') {
+            // Данные приходят в формате {"ssid": "MyRouter", "rssi": -50}
+            var net = msg['value'];
+            String ssid = net['ssid'] ?? "Unknown";
+            int rssi = int.parse(net['rssi'] ?? '0');
+          
+            setState(() {
+              // Добавляем сеть в список, если её там еще нет
+              if (!wifiNetworks.any((element) => element['ssid'] == ssid)) {
+                wifiNetworks.add(net);
+                // Сортируем по силе сигнала (RSSI), чтобы лучшие были сверху
+                wifiNetworks.sort((b,a) => b['rssi'].compareTo(a['rssi']));
+              }
+            });
+          }
+
+
         } catch (e) {
           print("Ошибка парсинга: $e");
         }
@@ -142,6 +165,58 @@ class _BlufiPageState extends State<BlufiPage> {
                       ],
                     ),
                   ),
+                  Divider(height: 40, thickness: 2),
+                  Text("Настройка Wi-Fi (DHCP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // Кнопка запуска сканирования
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.search),
+                    label: Text("Найти Wi-Fi сети"),
+                    onPressed: scanWifi, 
+                  ),
+                  
+                  // Если сети найдены — показываем выбор
+                  if (wifiNetworks.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blueGrey),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedSSID,
+                          hint: Text("Выберите вашу сеть..."),
+                          isExpanded: true,
+                          items: wifiNetworks.map((net) {
+                            return DropdownMenuItem<String>(
+                              value: net['ssid'],
+                              child: Text("${net['ssid']} [${net['rssi']} dBm]"),
+                            );
+                          }).toList(),
+                          onChanged: (value) => setState(() => selectedSSID = value),
+                        ),
+                      ),
+                    ),
+                  ],
+                  
+                  // Поле для пароля (показываем только если выбрана сеть)
+                  if (selectedSSID != null) ...[
+                    TextField(
+                      controller: passwordController,
+                      decoration: InputDecoration(labelText: "Введите пароль"),
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      onPressed: sendWifiCredentials,
+                      child: Text("ПОДКЛЮЧИТЬ"),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -194,16 +269,42 @@ class _BlufiPageState extends State<BlufiPage> {
     }
   }
   void disconnect() async {
-    print("Разрыв соединения...");
+    print("Возврат к списку устройств...");
+    
+    // 1. Сначала меняем состояние интерфейса (экран переключится мгновенно)
+    setState(() {
+      isConnected = false;
+      // Опционально очищаем данные датчиков, чтобы при новом входе не было старых цифр
+      ambTemp = "--";
+      chipTemp = "--";
+      lumin = "--";
+    });
+  
+    // 2. Затем пытаемся корректно закрыть соединение в фоне
     try {
-      await blufi.requestCloseConnection(); // Метод из grep
-      setState(() {
-        isConnected = false;
-        // devices.clear(); // Можно очистить список, чтобы найти заново
-      });
+      await blufi.requestCloseConnection();
+      print("Соединение закрыто на стороне Bluetooth");
     } catch (e) {
-      print("Ошибка при отключении: $e");
-      setState(() => isConnected = false); // Форсированный возврат
+      print("Ошибка при закрытии соединения: $e");
+    }
+  }
+
+  // Функция запроса сканирования сетей у ESP32
+  void scanWifi() async {
+    print("Запрос списка Wi-Fi у ESP32...");
+    setState(() => wifiNetworks.clear());
+    await blufi.requestDeviceWifiScan();
+  }
+  
+  // Функция отправки SSID и Пароля на ESP32
+  void sendWifiCredentials() async {
+    if (selectedSSID != null) {
+      print("Отправка данных Wi-Fi: $selectedSSID");
+      await blufi.configProvision(
+        username: selectedSSID, 
+        password: passwordController.text
+      );
+      print("Данные отправлены! Ждем подключения...");
     }
   }
 

@@ -251,23 +251,34 @@ class _BlufiPageState extends State<BlufiPage> {
                       onPressed: sendWifiCredentials,
                       child: Text("ПОДКЛЮЧИТЬ"),
                     ),
-					Card(
-                      color: Colors.blueGrey[50],
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
-                            Divider(),
-                            Text("IP: $currentIP"),
-                            Text("Маска: $currentMask"),
-                            Text("Шлюз: $currentGW"),
-                          ],
-                        ),
+                  ],
+				  Card(
+                    color: Colors.blueGrey[50],
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
+                          Divider(),
+                          Text("IP: $currentIP"),
+                          Text("Маска: $currentMask"),
+                          Text("Шлюз: $currentGW"),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
+				  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Параметры сети", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(
+                        icon: Icon(Icons.refresh, color: Colors.blue),
+                        onPressed: requestNetworkStatus,
+                        tooltip: "Обновить данные о сети",
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -358,5 +369,14 @@ class _BlufiPageState extends State<BlufiPage> {
       print("Данные отправлены! Ждем подключения...");
     }
   }
+  
+  //Функция отправки команды запроса состояния сети
+  void requestNetworkStatus() async {
+  if (isConnected) {
+    print("Запрос сетевого статуса...");
+    // Отправляем простую текстовую команду
+    await blufi.sendCustomData(data: "GET_NET");
+  }
+}
 
 }

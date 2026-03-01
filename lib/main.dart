@@ -25,6 +25,11 @@ class _BlufiPageState extends State<BlufiPage> {
   String currentMask = "0.0.0.0";
   String currentGW = "0.0.0.0";
 
+  TextEditingController ipController = TextEditingController(text: "192.168.1.50");
+  TextEditingController maskController = TextEditingController(text: "255.255.255.0");
+  TextEditingController gwController = TextEditingController(text: "192.168.1.1");
+
+  List<String> eventLog = [];
 
   // Переменные для наших датчиков
   String ambTemp = "--";
@@ -94,6 +99,13 @@ class _BlufiPageState extends State<BlufiPage> {
                 wifiNetworks.sort((b,a) => b['rssi'].compareTo(a['rssi']));
               }
             });
+          }
+
+		  // Г. вывод логов на экран
+		  if (msg['key'] == 'custom_data') {
+            String raw = msg['value'];
+            addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
+            // ... парсинг ...
           }
 
 
@@ -279,6 +291,48 @@ class _BlufiPageState extends State<BlufiPage> {
                       ),
                     ],
                   ),
+				  Column(
+                    children: [
+                      TextField(controller: ipController, 
+					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
+                        decoration: InputDecoration(labelText: "IP-адрес")),
+                      TextField(controller: maskController, 
+					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
+                        decoration: InputDecoration(labelText: "Маска подсети")),
+                      TextField(controller: gwController,  
+					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
+                        decoration: InputDecoration(labelText: "Шлюз (Gateway)")),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: applyStaticIP,
+                        child: Text("ПРИМЕНИТЬ STATIC IP"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                      ),
+                    ],
+                  ),
+				  Divider(height: 40, thickness: 2),
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Text("Лог событий", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+    TextButton(onPressed: () => setState(() => eventLog.clear()), child: Text("Очистить")),
+  ],
+),
+Container(
+  height: 150, // Ограничим высоту лога
+  padding: EdgeInsets.all(8),
+  decoration: BoxDecoration(
+    color: Colors.black.withOpacity(0.05),
+    borderRadius: BorderRadius.circular(8),
+  ),
+  child: ListView.builder(
+    itemCount: eventLog.length,
+    itemBuilder: (ctx, i) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(eventLog[i], style: TextStyle(fontSize: 12, fontFamily: 'monospace')),
+    ),
+  ),
+),
                 ],
               ),
             ),
@@ -320,14 +374,17 @@ class _BlufiPageState extends State<BlufiPage> {
 
   void connect(dynamic deviceAddress) async {
     print("Подключение к: $deviceAddress");
+	addToLog("Подключение к $deviceAddress...");
     try {
       await blufi.connectPeripheral(peripheralAddress: deviceAddress.toString());
       setState(() {
         isConnected = true;
       });
       print("Подключено!");
+	  addToLog("Успешно подключено!");
     } catch (e) {
       print("Не удалось подключиться: $e");
+	  addToLog("Не удалось подключиться $e!");
     }
   }
   void disconnect() async {
@@ -372,11 +429,48 @@ class _BlufiPageState extends State<BlufiPage> {
   
   //Функция отправки команды запроса состояния сети
   void requestNetworkStatus() async {
-  if (isConnected) {
-    print("Запрос сетевого статуса...");
-    // Отправляем простую текстовую команду
-    await blufi.sendCustomData(data: "GET_NET");
+    if (isConnected) {
+      print("Запрос сетевого статуса...");
+      // Отправляем простую текстовую команду
+      await blufi.sendCustomData(data: "GET_NET");
+    }
   }
-}
+  // Функция установки статического IP-адреса
+  bool isValidIP(String ip) {
+    // Регулярное выражение для проверки формата 0.0.0.0 - 255.255.255.255
+    final regExp = RegExp(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$');
+    return regExp.hasMatch(ip);
+  }
+  
+  void applyStaticIP() async {
+    if (!isValidIP(ipController.text) || 
+        !isValidIP(maskController.text) || 
+        !isValidIP(gwController.text)) {
+      
+      // Покажем всплывающее уведомление об ошибке
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Ошибка: Неверный формат IP-адреса!"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+  
+    String cmd = "SET_STATIC:${ipController.text}|${maskController.text}|${gwController.text}";
+    print("Отправка статики: $cmd");
+    await blufi.sendCustomData(data: cmd);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Настройки отправлены..."), backgroundColor: Colors.orange),
+    );
+    addToLog("Отправка Static IP: ${ipController.text}");
+  }
+
+  // Удобная функция для добавления записи с меткой времени
+  void addToLog(String message) {
+    String time = DateTime.now().toString().split('.').first.split(' ').last; // "14:20:05"
+    setState(() {
+      eventLog.insert(0, "[$time] $message"); // Новые записи — сверху
+      if (eventLog.length > 50) eventLog.removeLast(); // Храним только последние 50 событий
+    });
+  }
 
 }

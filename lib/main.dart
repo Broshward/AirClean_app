@@ -25,9 +25,9 @@ class _BlufiPageState extends State<BlufiPage> {
   String currentMask = "0.0.0.0";
   String currentGW = "0.0.0.0";
 
-  TextEditingController ipController = TextEditingController(text: "192.168.1.50");
-  TextEditingController maskController = TextEditingController(text: "255.255.255.0");
-  TextEditingController gwController = TextEditingController(text: "192.168.1.1");
+  TextEditingController ipController = TextEditingController(text: "0.0.0.0");
+  TextEditingController maskController = TextEditingController(text: "0.0.0.0");
+  TextEditingController gwController = TextEditingController(text: "0.0.0.0");
 
   List<String> eventLog = [];
 
@@ -70,8 +70,11 @@ class _BlufiPageState extends State<BlufiPage> {
               if (parts.length == 3) {
                 setState(() {
                   currentIP = parts[0];
+				    ipController.text = currentIP;
                   currentMask = parts[1];
+				    maskController.text = currentMask;
                   currentGW = parts[2];
+				    gwController.text = currentGW;
                 });
               }
             }
@@ -203,6 +206,7 @@ class _BlufiPageState extends State<BlufiPage> {
                   
                   // Кнопка запуска сканирования
                   ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                     icon: Icon(Icons.search),
                     label: Text("Найти Wi-Fi сети"),
                     onPressed: scanWifi, 
@@ -264,22 +268,22 @@ class _BlufiPageState extends State<BlufiPage> {
                       child: Text("ПОДКЛЮЧИТЬ"),
                     ),
                   ],
-				  Card(
-                    color: Colors.blueGrey[50],
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
-                          Divider(),
-                          Text("IP: $currentIP"),
-                          Text("Маска: $currentMask"),
-                          Text("Шлюз: $currentGW"),
-                        ],
-                      ),
-                    ),
-                  ),
+//				  Card(
+//                    color: Colors.blueGrey[50],
+//                    child: Padding(
+//                      padding: const EdgeInsets.all(12.0),
+//                      child: Column(
+//                        crossAxisAlignment: CrossAxisAlignment.start,
+//                        children: [
+//                          Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
+//                          Divider(),
+//                          Text("IP: $currentIP"),
+//                          Text("Маска: $currentMask"),
+//                          Text("Шлюз: $currentGW"),
+//                        ],
+//                      ),
+//                    ),
+//                  ),
 				  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -311,28 +315,28 @@ class _BlufiPageState extends State<BlufiPage> {
                     ],
                   ),
 				  Divider(height: 40, thickness: 2),
-Row(
-  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  children: [
-    Text("Лог событий", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-    TextButton(onPressed: () => setState(() => eventLog.clear()), child: Text("Очистить")),
-  ],
-),
-Container(
-  height: 150, // Ограничим высоту лога
-  padding: EdgeInsets.all(8),
-  decoration: BoxDecoration(
-    color: Colors.black.withOpacity(0.05),
-    borderRadius: BorderRadius.circular(8),
-  ),
-  child: ListView.builder(
-    itemCount: eventLog.length,
-    itemBuilder: (ctx, i) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Text(eventLog[i], style: TextStyle(fontSize: 12, fontFamily: 'monospace')),
-    ),
-  ),
-),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Лог событий", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      TextButton(onPressed: () => setState(() => eventLog.clear()), child: Text("Очистить")),
+                    ],
+                  ),
+                  Container(
+                    height: 150, // Ограничим высоту лога
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ListView.builder(
+                      itemCount: eventLog.length,
+                      itemBuilder: (ctx, i) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(eventLog[i], style: TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

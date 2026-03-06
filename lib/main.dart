@@ -154,6 +154,15 @@ class _BlufiPageState extends State<BlufiPage> {
           ? IconButton(icon: Icon(Icons.arrow_back), onPressed: disconnect) 
           : Icon(Icons.bluetooth),
         actions: [
+	      FutureBuilder(
+            future: Permission.location.serviceStatus.isEnabled,
+            builder: (context, snapshot) {
+              if (snapshot.data == false) {
+                return Icon(Icons.location_off, color: Colors.red);
+              }
+              return SizedBox();
+            },
+          ),
           if (!isConnected) IconButton(icon: Icon(Icons.refresh), onPressed: startScan)
         ],
       ),
@@ -382,6 +391,8 @@ class _BlufiPageState extends State<BlufiPage> {
   
   // Функции startScan и connect остаются как были
   void startScan() async {
+	checkHardwareServices(); // Сначала проверяем железо
+  
     print("Запуск поиска...");
     
     // 1. Сначала спрашиваем разрешения (как мы делали)
@@ -514,6 +525,37 @@ class _BlufiPageState extends State<BlufiPage> {
       eventLog.insert(0, "[$time] $message"); // Новые записи — сверху
       if (eventLog.length > 50) eventLog.removeLast(); // Храним только последние 50 событий
     });
+  }
+
+  void checkHardwareServices() async {
+    // 1. Проверяем Bluetooth
+    if (await Permission.bluetooth.serviceStatus.isDisabled) {
+      showServiceDialog("Bluetooth выключен", "Пожалуйста, включи Bluetooth для поиска ESP32.");
+      return;
+    }
+  
+    // 2. Проверяем Геолокацию (GPS)
+    if (await Permission.location.serviceStatus.isDisabled) {
+      showServiceDialog("Геолокация выключена", "Android требует включенный GPS для сканирования Bluetooth.");
+      return;
+    }
+  }
+
+  // Удобное окно с кнопкой перехода в настройки
+  void showServiceDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("ОК"),
+          ),
+        ],
+      ),
+    );
   }
 
 }

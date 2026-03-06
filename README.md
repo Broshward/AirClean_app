@@ -14,6 +14,15 @@ markdown
   - Сохранение настроек в энергонезависимую память (NVS) на стороне ESP32.
 - **Диагностика**: Встроенный лог событий для отладки команд.
 
+markdown
+
+## Скриншоты приложения
+
+<p align="center">
+  <img src="screenshots/main_screen.png" width="300" title="Главный экран">
+  <img src="screenshots/wifi_setup.png" width="300" title="Настройка Wi-Fi">
+</p>
+
 ## 🛠 Технологии
 - **Frontend**: Flutter (Dart) + `esp_blufi: ^0.1.8`
 - **Backend (Hardware)**: ESP32 (ESP-IDF / Arduino)

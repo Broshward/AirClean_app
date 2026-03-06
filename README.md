@@ -42,7 +42,7 @@ flutter run
 # Собрать APK
 flutter build apk --release
 
-⚠️ Важные нюансы (Android 10+)
+### ⚠️ Важные нюансы (Android 10+)
 Для работы сканирования Bluetooth на Android обязательно должны быть включены:
 
     1. Bluetooth (очевидно).

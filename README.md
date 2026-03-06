@@ -38,3 +38,12 @@ flutter pub get
 
 # Запустить проект (в режиме отладки)
 flutter run
+
+# Собрать APK
+flutter build apk --release
+
+⚠️ Важные нюансы (Android 10+)
+Для работы сканирования Bluetooth на Android обязательно должны быть включены:
+
+    1. Bluetooth (очевидно).
+    2. Геолокация (GPS) — это требование безопасности Android для поиска BLE-устройств.

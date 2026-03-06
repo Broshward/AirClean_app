@@ -3,8 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:esp_blufi/esp_blufi.dart'; // Основная библиотека
 import 'dart:typed_data';                 // Для работы с Uint8List
 import 'dart:convert';                    // Для работы с utf8.encode
+import 'package:flutter/services.dart';	//Для фиксации поворота
 
-void main() => runApp(MaterialApp(home: BlufiPage()));
+void main() async
+{
+  // 1. Обязательно инициализируем привязки Flutter
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. Блокируем ориентацию (только портретная)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  runApp(MaterialApp(home: BlufiPage(),debugShowCheckedModeBanner: false));
+}
 
 class BlufiPage extends StatefulWidget {
   @override
@@ -21,15 +33,14 @@ class _BlufiPageState extends State<BlufiPage> {
   String? selectedSSID;
   TextEditingController passwordController = TextEditingController();
   
-  String currentIP = "0.0.0.0";
-  String currentMask = "0.0.0.0";
-  String currentGW = "0.0.0.0";
-
   TextEditingController ipController = TextEditingController(text: "0.0.0.0");
   TextEditingController maskController = TextEditingController(text: "0.0.0.0");
   TextEditingController gwController = TextEditingController(text: "0.0.0.0");
 
   List<String> eventLog = [];
+
+  bool isStatic = false; // true - Static, false - DHCP
+
 
   // Переменные для наших датчиков
   String ambTemp = "--";
@@ -67,14 +78,15 @@ class _BlufiPageState extends State<BlufiPage> {
             if (raw.startsWith("NET:")) {
               // Разрезаем строку по разделителям
               List<String> parts = raw.substring(4).split("|");
-              if (parts.length == 3) {
+              if (parts.length == 4) {
                 setState(() {
-                  currentIP = parts[0];
-				    ipController.text = currentIP;
-                  currentMask = parts[1];
-				    maskController.text = currentMask;
-                  currentGW = parts[2];
-				    gwController.text = currentGW;
+				  ipController.text = parts[0];
+				  maskController.text = parts[1];
+				  gwController.text = parts[2];
+				  isStatic = (parts[3] == "1"); 
+      
+				  addToLog("Режим сети: ${isStatic ? 'Static' : 'DHCP'}");
+    
                 });
               }
             }
@@ -268,22 +280,6 @@ class _BlufiPageState extends State<BlufiPage> {
                       child: Text("ПОДКЛЮЧИТЬ"),
                     ),
                   ],
-//				  Card(
-//                    color: Colors.blueGrey[50],
-//                    child: Padding(
-//                      padding: const EdgeInsets.all(12.0),
-//                      child: Column(
-//                        crossAxisAlignment: CrossAxisAlignment.start,
-//                        children: [
-//                          Text("Текущие настройки сети:", style: TextStyle(fontWeight: FontWeight.bold)),
-//                          Divider(),
-//                          Text("IP: $currentIP"),
-//                          Text("Маска: $currentMask"),
-//                          Text("Шлюз: $currentGW"),
-//                        ],
-//                      ),
-//                    ),
-//                  ),
 				  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -295,25 +291,64 @@ class _BlufiPageState extends State<BlufiPage> {
                       ),
                     ],
                   ),
-				  Column(
-                    children: [
-                      TextField(controller: ipController, 
-					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
-                        decoration: InputDecoration(labelText: "IP-адрес")),
-                      TextField(controller: maskController, 
-					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
-                        decoration: InputDecoration(labelText: "Маска подсети")),
-                      TextField(controller: gwController,  
-					    keyboardType: TextInputType.numberWithOptions(decimal: true), // Только цифры и точки
-                        decoration: InputDecoration(labelText: "Шлюз (Gateway)")),
-                      const SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: applyStaticIP,
-                        child: Text("ПРИМЕНИТЬ STATIC IP"),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      ),
-                    ],
+				  // Переключатель режима
+                  SwitchListTile(
+                    title: Text("Использовать статический IP"),
+                    subtitle: Text(isStatic ? "Ручная настройка" : "Получать по DHCP автоматически"),
+                    value: isStatic,
+                    activeColor: Colors.orange,
+                    onChanged: (bool value) {
+                      setState(() {
+                        isStatic = value;
+                      });
+                      // Если выключили статику — сразу шлем команду сброса на ESP32
+                      if (!value) {
+                        blufi.sendCustomData(data: "SET_DHCP");
+                        addToLog("Переключение на DHCP...");
+                      }
+                    },
                   ),
+                  
+                  // Поля ввода (теперь они зависят от isStatic)
+                  TextField(
+                    controller: ipController,
+                    enabled: isStatic, // Если DHCP — поле серое и нажать нельзя
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: "IP адрес",
+                      fillColor: isStatic ? Colors.transparent : Colors.grey.withOpacity(0.1),
+                      filled: !isStatic,
+                    ),
+                  ),
+                  TextField(
+                    controller: maskController,
+                    enabled: isStatic, // Если DHCP — поле серое и нажать нельзя
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: "Маска подсети",
+                      fillColor: isStatic ? Colors.transparent : Colors.grey.withOpacity(0.1),
+                      filled: !isStatic,
+                    ),
+                  ),
+                  TextField(
+                    controller: gwController,
+                    enabled: isStatic, // Если DHCP — поле серое и нажать нельзя
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: "Шлюз (Gateway)",
+                      fillColor: isStatic ? Colors.transparent : Colors.grey.withOpacity(0.1),
+                      filled: !isStatic,
+                    ),
+                  ),
+                  
+                  if (isStatic)
+                    ElevatedButton(
+                      onPressed: applyStaticIP,
+                      child: Text("СОХРАНИТЬ STATIC IP"),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                    ),
+
+
 				  Divider(height: 40, thickness: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -384,6 +419,9 @@ class _BlufiPageState extends State<BlufiPage> {
       setState(() {
         isConnected = true;
       });
+	  // Даем 1 секунду на "прогрев" соединения и запрашиваем статус
+      Future.delayed(Duration(seconds: 2), () => requestNetworkStatus());
+
       print("Подключено!");
 	  addToLog("Успешно подключено!");
     } catch (e) {
@@ -391,6 +429,7 @@ class _BlufiPageState extends State<BlufiPage> {
 	  addToLog("Не удалось подключиться $e!");
     }
   }
+
   void disconnect() async {
     print("Возврат к списку устройств...");
     

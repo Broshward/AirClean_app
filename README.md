@@ -28,10 +28,10 @@ markdown
 ### Сборка приложения
 ```bash
 # Клонировать репозиторий
-git clone https://github.com
+git clone https://github.com/Broshward/AirClean_app.git
 
 # Перейти в папку
-cd esp32_blufi_control
+cd AirClean_app
 
 # Загрузить зависимости
 flutter pub get

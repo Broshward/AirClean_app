@@ -30,7 +30,7 @@ class _BlufiPageState extends State<BlufiPage> {
 
   bool _passwordVisible = false; // По умолчанию пароль скрыт
   List<dynamic> wifiNetworks = [];
-  String? selectedSSID;
+  String? selectedSSID=null;
   TextEditingController passwordController = TextEditingController();
   
   TextEditingController ipController = TextEditingController(text: "0.0.0.0");
@@ -169,7 +169,7 @@ class _BlufiPageState extends State<BlufiPage> {
       body: Column(
         children: [
           // Блок кнопок управления
-          Padding(
+          if (!isConnected) Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
@@ -473,8 +473,11 @@ class _BlufiPageState extends State<BlufiPage> {
   void sendWifiCredentials() async {
     if (selectedSSID != null) {
       print("Отправка данных Wi-Fi: $selectedSSID");
+	  String? ssid=selectedSSID;
+      selectedSSID=null;
+	  wifiNetworks.clear();
       await blufi.configProvision(
-        username: selectedSSID, 
+        username: ssid, 
         password: passwordController.text
       );
       print("Данные отправлены! Ждем подключения...");

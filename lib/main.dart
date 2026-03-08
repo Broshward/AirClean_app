@@ -210,11 +210,11 @@ class _BlufiPageState extends State<BlufiPage> {
                     padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
                     child: Column(
                       children: [
-                        Text("Уровень тепла"),
+                        Text("Термометр (0-50 °C)"),
                         LinearProgressIndicator(
                           value: (double.tryParse(ambTemp) ?? 0) / 50, // Шкала до 50 градусов
                           backgroundColor: Colors.grey[300],
-                          color: Colors.redAccent,
+                          color: (double.tryParse(ambTemp) ?? 0)<18 ? Colors.blue : (double.tryParse(ambTemp) ?? 0)<30 ? Colors.green : Colors.redAccent,
                           minHeight: 10,
                         ),
                       ],

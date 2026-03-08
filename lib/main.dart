@@ -210,15 +210,32 @@ class _BlufiPageState extends State<BlufiPage> {
                     padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
                     child: Column(
                       children: [
-                        Text("Термометр (0-50 °C)"),
+                        Text("Термометр"),
                         LinearProgressIndicator(
                           value: (double.tryParse(ambTemp) ?? 0) / 50, // Шкала до 50 градусов
                           backgroundColor: Colors.grey[300],
-                          color: (double.tryParse(ambTemp) ?? 0)<18 ? Colors.blue : (double.tryParse(ambTemp) ?? 0)<30 ? Colors.green : Colors.redAccent,
+                          color: getDynamicColor(ambTemp),
                           minHeight: 10,
                         ),
                       ],
                     ),
+                  ),
+                  Column(
+                    children: [
+                      Icon(
+                        Icons.thermostat,
+                        size: 40,
+                        color: getDynamicColor(ambTemp), // Твой цвет теперь живой!
+                      ),
+                      Text(
+                        "$ambTemp°C",
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: getDynamicColor(ambTemp),
+                        ),
+                      ),
+                    ],
                   ),
                   Divider(height: 40, thickness: 2),
                   Text("Настройка Wi-Fi (DHCP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -562,6 +579,38 @@ class _BlufiPageState extends State<BlufiPage> {
         ],
       ),
     );
+  }
+
+  Color getTemperatureColor(double temp) {
+    if (temp <= 15) return Colors.blue;          // Холодно
+    if (temp >= 35) return Colors.red;           // Жарко
+    
+    if (temp < 25) {
+      // Переход от синего к зеленому (15°C - 25°C)
+      return Color.lerp(Colors.blue, Colors.green, (temp - 15) / 10)!;
+    } else {
+      // Переход от зеленого к красному (25°C - 35°C)
+      return Color.lerp(Colors.green, Colors.red, (temp - 25) / 10)!;
+    }
+  }
+
+  Color getDynamicColor(String tempStr) {
+    // Парсим строку в число, если не выходит — ставим 0.0
+    double temp = double.tryParse(tempStr) ?? 0.0;
+  
+    if (temp <= 18) return Colors.blue;          // Холодно
+    if (temp >= 30) return Colors.red;           // Жарко
+    
+    // Плавный переход Синий -> Зеленый (18-24 градуса)
+    if (temp < 24) {
+      double factor = (temp - 18) / 6; 
+      return Color.lerp(Colors.blue, Colors.green, factor.clamp(0.0, 1.0))!;
+    } 
+    // Плавный переход Зеленый -> Красный (24-30 градусов)
+    else {
+      double factor = (temp - 24) / 6;
+      return Color.lerp(Colors.green, Colors.red, factor.clamp(0.0, 1.0))!;
+    }
   }
 
 }

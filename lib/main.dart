@@ -451,6 +451,9 @@ class _BlufiPageState extends State<BlufiPage> {
       ambTemp = "--";
       chipTemp = "--";
       lumin = "--";
+
+      selectedSSID=null;
+	  wifiNetworks.clear();
     });
   
     // 2. Затем пытаемся корректно закрыть соединение в фоне

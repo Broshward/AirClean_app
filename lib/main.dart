@@ -41,6 +41,7 @@ class _BlufiPageState extends State<BlufiPage> {
 
   bool isStatic = false; // true - Static, false - DHCP
 
+  String deviceTime = "00:00:00"; // Время
 
   // Переменные для наших датчиков
   String ambTemp = "--";
@@ -95,6 +96,7 @@ class _BlufiPageState extends State<BlufiPage> {
                 if (raw.startsWith("Amb_Temp:")) ambTemp = raw.split(":")[1];
                 if (raw.startsWith("Chip_Temp:")) chipTemp = raw.split(":")[1];
                 if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
+                if (raw.startsWith("Time:")) deviceTime = raw.split(":")[1].replaceAll('_',':');
               });
 			}
           }
@@ -225,7 +227,7 @@ class _BlufiPageState extends State<BlufiPage> {
                       Icon(
                         Icons.thermostat,
                         size: 40,
-                        color: getDynamicColor(ambTemp), // Твой цвет теперь живой!
+                        color: getDynamicColor(ambTemp), 
                       ),
                       Text(
                         "$ambTemp°C",
@@ -236,6 +238,14 @@ class _BlufiPageState extends State<BlufiPage> {
                         ),
                       ),
                     ],
+                  ),
+                  Text(
+                    "Время на устройстве: $deviceTime",
+                    style: TextStyle(
+                  	fontSize: 14,
+                  	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                  	color: Colors.grey[600],
+                    ),
                   ),
                   Divider(height: 40, thickness: 2),
                   Text("Настройка Wi-Fi (DHCP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

@@ -41,7 +41,7 @@ class _BlufiPageState extends State<BlufiPage> {
 
   bool isStatic = false; // true - Static, false - DHCP
 
-  String deviceTime = "00:00:00"; // Время
+  String deviceTime = "Not sync"; // Время
 
   // Переменные для наших датчиков
   String ambTemp = "--";
@@ -96,7 +96,11 @@ class _BlufiPageState extends State<BlufiPage> {
                 if (raw.startsWith("Amb_Temp:")) ambTemp = raw.split(":")[1];
                 if (raw.startsWith("Chip_Temp:")) chipTemp = raw.split(":")[1];
                 if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
-                if (raw.startsWith("Time:")) deviceTime = raw.split(":")[1].replaceAll('_',':');
+                if (raw.startsWith("Time:")) {
+					deviceTime = raw.split(":")[1];
+					if (deviceTime.compareTo("Not sync")!=0)
+						deviceTime = deviceTime.replaceAll('_',':');
+				}
               });
 			}
           }
@@ -239,14 +243,26 @@ class _BlufiPageState extends State<BlufiPage> {
                       ),
                     ],
                   ),
-                  Text(
-                    "Время на устройстве: $deviceTime",
-                    style: TextStyle(
-                  	fontSize: 14,
-                  	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
-                  	color: Colors.grey[600],
+                  if (deviceTime.compareTo("Not sync")==0) Container(
+                    color: Colors.amber.shade100,
+                    padding: EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                        SizedBox(width: 10),
+                        Expanded(child: Text("Время не синхронизировано!")),
+                      ],
                     ),
-                  ),
+                  )
+		          else
+                    Text(
+                      "Время на устройстве: $deviceTime",
+                      style: TextStyle(
+                    	fontSize: 14,
+                    	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                    	color: Colors.grey[600],
+                      ),
+                    ),
                   Divider(height: 40, thickness: 2),
                   Text("Настройка Wi-Fi (DHCP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   
@@ -408,6 +424,9 @@ class _BlufiPageState extends State<BlufiPage> {
                       ),
                     ),
                   ),
+				  TextButton(onPressed: resetDevice, 
+					child: Text("Сбросить устройство")
+				  ),
                 ],
               ),
             ),
@@ -481,6 +500,7 @@ class _BlufiPageState extends State<BlufiPage> {
 
       selectedSSID=null;
 	  wifiNetworks.clear();
+	  deviceTime='Not sync';
     });
   
     // 2. Затем пытаемся корректно закрыть соединение в фоне
@@ -623,4 +643,11 @@ class _BlufiPageState extends State<BlufiPage> {
     }
   }
 
+  // Program reset device
+  void resetDevice() async {
+    if (isConnected) {
+      print("Программный сброс!...");
+      await blufi.sendCustomData(data: "RESET");
+	}
+  }
 }

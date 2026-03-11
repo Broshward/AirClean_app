@@ -152,6 +152,10 @@ class _BlufiPageState extends State<BlufiPage> {
 
   @override
   Widget build(BuildContext context) {
+    const double minTemp = 0;
+    const double maxTemp = 50;
+    const double step = 5; // Шаг цифр: 10, 15, 20...
+
     return Scaffold(
       appBar: AppBar(
         title: Text(isConnected ? "Мониторинг ESP32" : "Поиск устройств"),
@@ -216,7 +220,7 @@ class _BlufiPageState extends State<BlufiPage> {
                     padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
                     child: Column(
                       children: [
-                        Text("Термометр"),
+                        Text("Термометр 0-50 °C"),
                         LinearProgressIndicator(
                           value: (double.tryParse(ambTemp) ?? 0) / 50, // Шкала до 50 градусов
                           backgroundColor: Colors.grey[300],
@@ -225,6 +229,49 @@ class _BlufiPageState extends State<BlufiPage> {
                         ),
                       ],
                     ),
+                  ),
+				  //Ещё один термометер))
+                  Column(
+                    children: [
+                      // 1. Сама цветная полоска (твой прогресс-бар)
+                      Container(
+                        height: 12,
+                        width: 300,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          gradient: LinearGradient(colors: [Colors.blue, Colors.green, Colors.red]),
+                        ),
+                        child: Stack(
+                          children: [
+                            // Указатель текущей температуры (белая риска)
+                            Positioned(
+                              left: (((double.tryParse(ambTemp) ?? 0) - minTemp) / (maxTemp - minTemp) * 300).clamp(0, 300),
+                              child: Container(width: 3, height: 12, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      // 2. Шкала с цифрами
+                      Container(
+                        width: 300,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List.generate(((maxTemp - minTemp) / step).toInt() + 1, (index) {
+                            double val = minTemp + (index * step);
+                            return Column(
+                              children: [
+                                Container(width: 1, height: 5, color: Colors.grey), // Риска
+                                Text(
+                                  "${val.toInt()}",
+                                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                ),
+                              ],
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
                   ),
                   Column(
                     children: [

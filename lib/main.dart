@@ -4,6 +4,7 @@ import 'package:esp_blufi/esp_blufi.dart'; // Основная библиоте�
 import 'dart:typed_data';                 // Для работы с Uint8List
 import 'dart:convert';                    // Для работы с utf8.encode
 import 'package:flutter/services.dart';	//Для фиксации поворота
+import 'package:flutter/src/material/card_theme.dart';
 
 void main() async
 {
@@ -15,7 +16,24 @@ void main() async
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(MaterialApp(home: BlufiPage(),debugShowCheckedModeBanner: false));
+  runApp(
+    MaterialApp(
+	  home: BlufiPage(),
+	  debugShowCheckedModeBanner: false,
+	  //Тёмная тема
+      title: 'ESP32 BluFi Control',
+      theme: ThemeData.dark().copyWith( // Включаем темную тему
+        scaffoldBackgroundColor: const Color(0xFF0F111A), // Глубокий полночный синий
+        primaryColor: Colors.cyanAccent,
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1A1D2E), // Цвет карточек чуть светлее фона
+          elevation: 8,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+
+	)
+  );
 }
 
 class BlufiPage extends StatefulWidget {
@@ -231,48 +249,7 @@ class _BlufiPageState extends State<BlufiPage> {
                     ),
                   ),
 				  //Ещё один термометер))
-                  Column(
-                    children: [
-                      // 1. Сама цветная полоска (твой прогресс-бар)
-                      Container(
-                        height: 12,
-                        width: 300,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          gradient: LinearGradient(colors: [Colors.blue, Colors.green, Colors.red]),
-                        ),
-                        child: Stack(
-                          children: [
-                            // Указатель текущей температуры (белая риска)
-                            Positioned(
-                              left: (((double.tryParse(ambTemp) ?? 0) - minTemp) / (maxTemp - minTemp) * 300).clamp(0, 300),
-                              child: Container(width: 3, height: 12, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      // 2. Шкала с цифрами
-                      Container(
-                        width: 300,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: List.generate(((maxTemp - minTemp) / step).toInt() + 1, (index) {
-                            double val = minTemp + (index * step);
-                            return Column(
-                              children: [
-                                Container(width: 1, height: 5, color: Colors.grey), // Риска
-                                Text(
-                                  "${val.toInt()}",
-                                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                                ),
-                              ],
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
+                  buildThermometerScale(double.tryParse(ambTemp) ?? 0),
                   Column(
                     children: [
                       Icon(
@@ -481,6 +458,87 @@ class _BlufiPageState extends State<BlufiPage> {
       ),
     );
   }
+
+  Widget buildThermometerScale(double currentTemp) {
+    const double minTemp = 00;
+    const double maxTemp = 50;
+    const double step = 5; // Шаг цифр: 10, 15, 20...
+  
+    return Column(
+      children: [
+        // 1. Сама цветная полоска (твой прогресс-бар)
+        Container(
+          height: 12,
+          width: 300,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            gradient: LinearGradient(colors: [Colors.blue, Colors.green, Colors.red]),
+          ),
+          child: 
+            Stack(
+              clipBehavior: Clip.none, // Чтобы свечение не обрезалось краями
+              children: [
+                
+                AnimatedPositioned(
+                  duration: Duration(milliseconds: 300), // Плавное движение за 0.3 сек
+                  curve: Curves.easeOutCubic,
+                  left: ((currentTemp - minTemp) / (maxTemp - minTemp) * 300) - 2, // -2 для центровки 4-пиксельного бара
+                  top: -2, // Смещение вверх, чтобы перекрывал шкалу
+                  child: buildGlowPointer(currentTemp),
+                ),
+              ],
+            )
+        ),
+        SizedBox(height: 8),
+        // 2. Шкала с цифрами
+        Container(
+          width: 300,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(((maxTemp - minTemp) / step).toInt() + 1, (index) {
+              double val = minTemp + (index * step);
+              return Column(
+                children: [
+                  Container(width: 1, height: 5, color: Colors.grey), // Риска
+                  Text(
+                    "${val.toInt()}",
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  ),
+                ],
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildGlowPointer(double currentTemp) {
+    // Получаем цвет в зависимости от температуры (наша старая функция)
+    Color pointerColor = getDynamicColor(currentTemp.toString());
+    
+    return Container(
+      width: 4,
+      height: 16, // Чуть выше шкалы, чтобы выделялся
+      decoration: BoxDecoration(
+        color: Colors.white, // Сам стержень белый для контраста
+        borderRadius: BorderRadius.circular(2),
+        boxShadow: [
+          BoxShadow(
+            color: pointerColor.withOpacity(0.8), // Свечение в цвет температуры
+            blurRadius: 10,  // Насколько сильно рассеивается свет
+            spreadRadius: 2, // Насколько широкое пятно
+          ),
+          BoxShadow(
+            color: pointerColor.withOpacity(0.5),
+            blurRadius: 20,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+    );
+  }
+
   
   // Функции startScan и connect остаются как были
   void startScan() async {

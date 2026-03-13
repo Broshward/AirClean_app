@@ -274,7 +274,14 @@ class _BlufiPageState extends State<BlufiPage> {
                       children: [
                         Icon(Icons.warning_amber_rounded, color: Colors.orange),
                         SizedBox(width: 10),
-                        Expanded(child: Text("Время не синхронизировано!")),
+                        Expanded(child: Text(
+						  "Время не синхронизировано!", 
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                            color: Colors.grey[600],
+                          ),
+						)),
                       ],
                     ),
                   )

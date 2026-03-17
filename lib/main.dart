@@ -69,7 +69,8 @@ class _BlufiPageState extends State<BlufiPage> {
   String chipTemp = "--";
   String lumin = "--";
 
-
+  String lastConnectedAddress = ""; // Храним MAC последнего успешного входа
+  
 		  
   @override
   void initState() {
@@ -220,15 +221,24 @@ class _BlufiPageState extends State<BlufiPage> {
             Expanded(
               child: ListView.builder(
                 itemCount: devices.length,
-                itemBuilder: (ctx, i) => ListTile(
-				  leading: Icon(Icons.developer_board, color: Colors.indigo),
-				  title: Text(deviceNames[devices[i]] ?? "Unknown Device"),
-				  subtitle: Text(devices[i]), // Здесь оставим MAC-адрес
-				  onTap: () => connect(devices[i]),
-				  trailing: Icon(Icons.link),
-				),
+                itemBuilder: (ctx, i) {
+                  // Проверяем, совпадает ли адрес в списке с последним удачным
+                  bool isLast = devices[i] == lastConnectedAddress;
+                
+                  return ListTile(
+                    leading: Icon(Icons.developer_board, color: isLast ? Colors.green : Colors.indigo),
+                    title: Text(deviceNames[devices[i]] ?? "Unknown Device"),
+                    subtitle: Text(devices[i]),
+                    onTap: () => connect(devices[i]),
+                    // Иконка link только для "старого знакомого", для остальных - ничего или просто стрелочка
+                    trailing: isLast 
+                      ? Icon(Icons.link, color: Colors.green) 
+                      : Icon(Icons.chevron_right, color: Colors.grey),
+                  );
+                },
               ),
             ),
+
 
           // Если ПОДКЛЮЧЕНЫ - показываем "Термометр" и датчики
           if (isConnected)
@@ -255,7 +265,7 @@ class _BlufiPageState extends State<BlufiPage> {
                       ],
                     ),
                   ),
-				  //Ещё один термометер))
+				  //Ещё один термометер
                   buildThermometerScale(double.tryParse(ambTemp) ?? 0),
                   Column(
                     children: [
@@ -612,7 +622,7 @@ class _BlufiPageState extends State<BlufiPage> {
       Navigator.of(context).popUntil((route) => route.isFirst);
   
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Связь с устройством потеряна")),
+        const SnackBar(content: Text("Disconnected")),
       );
     }
   }
@@ -625,8 +635,9 @@ class _BlufiPageState extends State<BlufiPage> {
 	  
       setState(() {
         isConnected = true;
-
+        lastConnectedAddress = deviceAddress.toString(); // ЗАПОМНИЛИ
       });
+
 	  // Даем 1 секунду на "прогрев" соединения и запрашиваем статус сети
       Future.delayed(Duration(seconds: 2), () => requestNetworkStatus());
 
@@ -817,4 +828,5 @@ class _BlufiPageState extends State<BlufiPage> {
       await blufi.sendCustomData(data: "START_OTA");
     }
   }
+
 }

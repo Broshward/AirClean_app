@@ -61,11 +61,16 @@ class _BlufiPageState extends State<BlufiPage> {
 
   String deviceTime = "Not sync"; // Время
 
+  double otaProgress = 0.0; // 0.0 to 1.0  
+  bool isUpdating = false;
+
   // Переменные для наших датчиков
   String ambTemp = "--";
   String chipTemp = "--";
   String lumin = "--";
 
+
+		  
   @override
   void initState() {
     super.initState();
@@ -90,6 +95,11 @@ class _BlufiPageState extends State<BlufiPage> {
             }
           }
           
+          if (msg['key'] == 'gatt_disconnected') {
+            print("Событие: Соединение разорвано");
+            onConnectionLost();
+		  }
+
           // Б. Обработка данных от датчиков (Custom Data)
           if (msg['key'] == 'receive_device_custom_data') {
             String raw = msg['value']; // Например "Amb_temp:24.5"
@@ -119,6 +129,9 @@ class _BlufiPageState extends State<BlufiPage> {
 					if (deviceTime.compareTo("Not sync")!=0)
 						deviceTime = deviceTime.replaceAll('_',':');
 				}
+		        // Г. вывод логов на экран
+                addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
+                  // ... парсинг ...
               });
 			}
           }
@@ -140,12 +153,6 @@ class _BlufiPageState extends State<BlufiPage> {
             });
           }
 
-		  // Г. вывод логов на экран
-		  if (msg['key'] == 'custom_data') {
-            String raw = msg['value'];
-            addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
-            // ... парсинг ...
-          }
 
 
         } catch (e) {
@@ -458,6 +465,18 @@ class _BlufiPageState extends State<BlufiPage> {
 				  TextButton(onPressed: resetDevice, 
 					child: Text("Сбросить устройство")
 				  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    icon: Icon(Icons.memory),
+                    label: Text("Обновить ПО"),
+                    onPressed: updateFlash, 
+                  ),
+                  if (isUpdating) 
+                    LinearProgressIndicator(
+                      value: otaProgress,
+                      backgroundColor: Colors.white10,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.cyanAccent),
+                    ),
                 ],
               ),
             ),
@@ -580,20 +599,44 @@ class _BlufiPageState extends State<BlufiPage> {
     }
   }
 
+  // Функция для разрыва связи
+  void onConnectionLost() {
+    if (mounted) { // Проверка, что экран еще открыт
+      setState(() {
+        isConnected = false;
+        // Сбрасываем данные, чтобы не вводить в заблуждение
+        ambTemp = "--"; 
+      });
+  
+      // Возвращаемся на экран поиска
+      Navigator.of(context).popUntil((route) => route.isFirst);
+  
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Связь с устройством потеряна")),
+      );
+    }
+  }
+
   void connect(dynamic deviceAddress) async {
     print("Подключение к: $deviceAddress");
-	addToLog("Подключение к $deviceAddress...");
+
     try {
       await blufi.connectPeripheral(peripheralAddress: deviceAddress.toString());
+	  
       setState(() {
         isConnected = true;
+
       });
-	  // Даем 1 секунду на "прогрев" соединения и запрашиваем статус
+	  // Даем 1 секунду на "прогрев" соединения и запрашиваем статус сети
       Future.delayed(Duration(seconds: 2), () => requestNetworkStatus());
 
       print("Подключено!");
 	  addToLog("Успешно подключено!");
     } catch (e) {
+      // Показываем SnackBar с советом
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Не удалось подключиться. Попробуйте ещё раз!")),
+      );
       print("Не удалось подключиться: $e");
 	  addToLog("Не удалось подключиться $e!");
     }
@@ -609,6 +652,9 @@ class _BlufiPageState extends State<BlufiPage> {
       ambTemp = "--";
       chipTemp = "--";
       lumin = "--";
+      ipController = TextEditingController(text: "0.0.0.0");
+      maskController = TextEditingController(text: "0.0.0.0");
+      gwController = TextEditingController(text: "0.0.0.0");
 
       selectedSSID=null;
 	  wifiNetworks.clear();
@@ -761,5 +807,14 @@ class _BlufiPageState extends State<BlufiPage> {
       print("Программный сброс!...");
       await blufi.sendCustomData(data: "RESET");
 	}
+  }
+  //Функция загрузки обновления
+  void updateFlash() async {
+    if (isConnected) {
+      print("Загрузка обновления прошивки...");
+	  isUpdating = true;
+      // Отправляем простую текстовую команду
+      await blufi.sendCustomData(data: "START_OTA");
+    }
   }
 }

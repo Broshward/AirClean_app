@@ -305,8 +305,7 @@ class _BlufiPageState extends State<BlufiPage>
                       ),
                     ],
                   ),
-                  buildCompactClock(deviceTime, false),
-				  buildNeonClock(),
+				  buildElegantClock(),
 
                   if (deviceTime.compareTo("Not sync")==0) Container(
                     color: Colors.amber.shade100,
@@ -538,74 +537,54 @@ class _BlufiPageState extends State<BlufiPage>
     );
   }
 
-  Widget buildCompactClock(String timeStr, bool isSynced) {
+  Widget buildElegantClock() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black38,
+        color: Colors.black45,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isSynced ? Colors.cyanAccent.withOpacity(0.3) : Colors.orangeAccent.withOpacity(0.3)),
+        border: Border.all(color: Colors.cyanAccent.withOpacity(0.3)),
         boxShadow: [
-          BoxShadow(
-            color: (isSynced ? Colors.cyanAccent : Colors.orangeAccent).withOpacity(0.1),
-            blurRadius: 8,
-          )
+          BoxShadow(color: Colors.cyanAccent.withOpacity(0.05), blurRadius: 10)
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isSynced ? Icons.cloud_done : Icons.access_time_filled,
-            size: 14,
-            color: isSynced ? Colors.cyanAccent : Colors.orangeAccent,
+          // Блок Времени и Даты
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(deviceTime, // 12:45:05
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+ //             Text(deviceDate, // 14.03.2024
+ //                 style: TextStyle(fontSize: 10, color: Colors.white54, letterSpacing: 1.1)),
+            ],
           ),
-          SizedBox(width: 6),
-          Text(
-            timeStr, // Наше "HH:mm:ss"
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'monospace',
-              letterSpacing: 1.2,
-              color: Colors.white,
+          const SizedBox(width: 15),
+          // Разделитель
+          Container(width: 1, height: 30, color: Colors.white10),
+          const SizedBox(width: 15),
+          // Выбор города (убираем Dropdown, делаем через Popup или компактный клик)
+          InkWell(
+            onTap: () => _showCityPicker(), // Отдельная функция для выбора
+            child: Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(selectedCity.split(" ").first, // Только название города
+                        style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(selectedCity.split(" ").last, // Только (UTC+3)
+                        style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                  ],
+                ),
+                const Icon(Icons.arrow_drop_down, color: Colors.cyanAccent, size: 18),
+              ],
             ),
           ),
         ],
       ),
-    );
-  }
-  Widget buildNeonClock() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        buildCompactClock(deviceTime, false), // Твой компактный виджет
-        const SizedBox(height: 8),
-        DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: selectedCity,
-            dropdownColor: const Color(0xFF1A1D2E), // Цвет в стиле Dark Mode
-            icon: const Icon(Icons.location_on, size: 14, color: Colors.cyanAccent),
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-            items: timezones.keys.map((String city) {
-              return DropdownMenuItem<String>(
-                value: city,
-                child: Text(city),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              if (newValue != null) {
-                setState(() {
-                  selectedCity = newValue;
-                  int offset = timezones[newValue]!;
-                  // Шлем команду на ESP32!
-                  blufi.sendCustomData(data: "SET_TZ:$offset");
-                });
-              }
-            },
-          ),
-        ),
-      ],
     );
   }
 
@@ -965,6 +944,41 @@ class _BlufiPageState extends State<BlufiPage>
       // Отправляем простую текстовую команду
       await blufi.sendCustomData(data: "START_OTA");
     }
+  }
+  // Функция выбора часового пояса
+  void _showCityPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1D2E), // Твой цвет Dark Mode
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: ListView(
+            shrinkWrap: true, // Чтобы окно было по размеру списка
+            children: timezones.keys.map((String city) {
+              return ListTile(
+                leading: const Icon(Icons.location_city, color: Colors.cyanAccent),
+                title: Text(city, style: const TextStyle(color: Colors.white)),
+                trailing: city == selectedCity 
+                    ? const Icon(Icons.check, color: Colors.cyanAccent) 
+                    : null,
+                onTap: () {
+                  setState(() {
+                    selectedCity = city;
+                    int offset = timezones[city]!;
+                    blufi.sendCustomData(data:"SET_TZ:$offset");
+                  });
+                  Navigator.pop(context); // Закрываем окно после выбора
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
   }
 
 }

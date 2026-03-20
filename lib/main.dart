@@ -36,11 +36,13 @@ void main() async
   );
 }
 
-class BlufiPage extends StatefulWidget {
+class BlufiPage extends StatefulWidget 
+{
   @override
   _BlufiPageState createState() => _BlufiPageState();
 }
-class _BlufiPageState extends State<BlufiPage> {
+class _BlufiPageState extends State<BlufiPage> 
+{
   List<String> devices = [];
   Map<String, String> deviceNames = {}; // Адрес: Имя
   bool isConnected = false;
@@ -59,7 +61,8 @@ class _BlufiPageState extends State<BlufiPage> {
 
   bool isStatic = false; // true - Static, false - DHCP
 
-  String deviceTime = "Not sync"; // Время
+  String syncTime = "--:--:--"; // Время
+  String deviceTime = "--:--:--"; // Время
 
   double otaProgress = 0.0; // 0.0 to 1.0  
   bool isUpdating = false;
@@ -70,7 +73,20 @@ class _BlufiPageState extends State<BlufiPage> {
   String lumin = "--";
 
   String lastConnectedAddress = ""; // Храним MAC последнего успешного входа
-  
+
+  final Map<String, int> timezones = {
+    "Лондон (UTC+0)": 0,
+    "Париж (UTC+1)": 1,
+    "Калининград (UTC+2)": 2,
+    "Москва (UTC+3)": 3,
+    "Самара (UTC+4)": 4,
+    "Екатеринбург (UTC+5)": 5,
+    "Новосибирск (UTC+7)": 7,
+    "Владивосток (UTC+10)": 10,
+  };
+  String selectedCity = "Москва (UTC+3)"; // Дефолтное значение
+
+
 		  
   @override
   void initState() {
@@ -129,6 +145,11 @@ class _BlufiPageState extends State<BlufiPage> {
 					deviceTime = raw.split(":")[1];
 					if (deviceTime.compareTo("Not sync")!=0)
 						deviceTime = deviceTime.replaceAll('_',':');
+				}
+                if (raw.startsWith("Time_sync_sntp:")) {
+					syncTime = raw.split(":")[1];
+					if (syncTime.compareTo("Not sync")!=0)
+						syncTime = syncTime.replaceAll('_',':');
 				}
 		        // Г. вывод логов на экран
                 addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
@@ -284,6 +305,9 @@ class _BlufiPageState extends State<BlufiPage> {
                       ),
                     ],
                   ),
+                  buildCompactClock(deviceTime, false),
+				  buildNeonClock(),
+
                   if (deviceTime.compareTo("Not sync")==0) Container(
                     color: Colors.amber.shade100,
                     padding: EdgeInsets.all(8),
@@ -303,8 +327,27 @@ class _BlufiPageState extends State<BlufiPage> {
                     ),
                   )
 		          else
+                  if (syncTime.compareTo("Not sync")==0) Container(
+                    color: Colors.amber.shade100,
+                    padding: EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                        SizedBox(width: 10),
+                        Expanded(child: Text(
+						  "Время не синхронизировано!", 
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                            color: Colors.grey[600],
+                          ),
+						)),
+                      ],
+                    ),
+                  )
+		          else
                     Text(
-                      "Время на устройстве: $deviceTime",
+                      "Время последней\nсинхронизации: $syncTime",
                       style: TextStyle(
                     	fontSize: 14,
                     	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
@@ -473,7 +516,7 @@ class _BlufiPageState extends State<BlufiPage> {
                     ),
                   ),
 				  TextButton(onPressed: resetDevice, 
-					child: Text("Сбросить устройство")
+					child: Text("Перезагрузить устройство")
 				  ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -492,6 +535,77 @@ class _BlufiPageState extends State<BlufiPage> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget buildCompactClock(String timeStr, bool isSynced) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isSynced ? Colors.cyanAccent.withOpacity(0.3) : Colors.orangeAccent.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: (isSynced ? Colors.cyanAccent : Colors.orangeAccent).withOpacity(0.1),
+            blurRadius: 8,
+          )
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSynced ? Icons.cloud_done : Icons.access_time_filled,
+            size: 14,
+            color: isSynced ? Colors.cyanAccent : Colors.orangeAccent,
+          ),
+          SizedBox(width: 6),
+          Text(
+            timeStr, // Наше "HH:mm:ss"
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'monospace',
+              letterSpacing: 1.2,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget buildNeonClock() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        buildCompactClock(deviceTime, false), // Твой компактный виджет
+        const SizedBox(height: 8),
+        DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selectedCity,
+            dropdownColor: const Color(0xFF1A1D2E), // Цвет в стиле Dark Mode
+            icon: const Icon(Icons.location_on, size: 14, color: Colors.cyanAccent),
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            items: timezones.keys.map((String city) {
+              return DropdownMenuItem<String>(
+                value: city,
+                child: Text(city),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              if (newValue != null) {
+                setState(() {
+                  selectedCity = newValue;
+                  int offset = timezones[newValue]!;
+                  // Шлем команду на ESP32!
+                  blufi.sendCustomData(data: "SET_TZ:$offset");
+                });
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -616,6 +730,8 @@ class _BlufiPageState extends State<BlufiPage> {
         isConnected = false;
         // Сбрасываем данные, чтобы не вводить в заблуждение
         ambTemp = "--"; 
+        chipTemp = "--";
+        lumin = "--";
       });
   
       // Возвращаемся на экран поиска
@@ -638,8 +754,13 @@ class _BlufiPageState extends State<BlufiPage> {
         lastConnectedAddress = deviceAddress.toString(); // ЗАПОМНИЛИ
       });
 
-	  // Даем 1 секунду на "прогрев" соединения и запрашиваем статус сети
-      Future.delayed(Duration(seconds: 2), () => requestNetworkStatus());
+	  // Даем 2 секунду на "прогрев" соединения и запрашиваем статус сети
+      Future.delayed(Duration(seconds: 2), () { 
+		  requestNetworkStatus();
+		  requestSyncTime();
+		  requestTZ(); 
+	    }
+	  );
 
       print("Подключено!");
 	  addToLog("Успешно подключено!");
@@ -669,7 +790,8 @@ class _BlufiPageState extends State<BlufiPage> {
 
       selectedSSID=null;
 	  wifiNetworks.clear();
-	  deviceTime='Not sync';
+	  syncTime='--:--:--';
+	  deviceTime='--:--:--'; 
     });
   
     // 2. Затем пытаемся корректно закрыть соединение в фоне
@@ -703,6 +825,22 @@ class _BlufiPageState extends State<BlufiPage> {
     }
   }
   
+	//Запрос времени синхронизации часов	  
+  void requestSyncTime() async {
+    if (isConnected) {
+      print("Запрос времени синхронизации...");
+      // Отправляем простую текстовую команду
+      await blufi.sendCustomData(data: "GET_SYNC_TIME");
+    }
+  }
+  //Функция для запроса часового пояса
+  void requestTZ() async {
+    if (isConnected) {
+      print("Запрос часового пояса...");
+      // Отправляем простую текстовую команду
+      await blufi.sendCustomData(data: "GET_TZ");
+    }
+  }
   //Функция отправки команды запроса состояния сети
   void requestNetworkStatus() async {
     if (isConnected) {

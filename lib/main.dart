@@ -36,11 +36,192 @@ void main() async
   );
 }
 
+enum ValueType { float, integer, boolean }
+// Этот ключ — как "пульт управления" конкретным экземпляром экрана
+final GlobalKey<SensorScreenState> sensorScreenKey = GlobalKey<SensorScreenState>();
+
+class SensorModel 
+{
+  final int id;
+  final ValueType valType;
+  final String typeName;
+  final String label;
+  dynamic value; // Здесь будет лежать само значение (0.5, 10 или true)
+
+  SensorModel({
+    required this.id,
+    required this.valType,
+    required this.typeName,
+    required this.label,
+    this.value = 0,
+  });
+
+  // Магия парсинга строки "1:0:temp:Heater"
+  factory SensorModel.fromString(String raw) {
+    var parts = raw.split(':');
+    return SensorModel(
+      id: int.parse(parts[0]),
+      valType: ValueType.values[int.parse(parts[1])],
+      typeName: parts[2],
+      label: parts[3],
+    );
+  }
+}
+
+class SensorScreen extends StatefulWidget 
+{
+  // Добавляем ключ в конструктор
+  SensorScreen() : super(key: sensorScreenKey); 
+  
+  @override
+  SensorScreenState createState() => SensorScreenState();
+}
+
+class SensorScreenState extends State<SensorScreen> 
+{
+  List<SensorModel> sensors = [];
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  void updateSensorsFromDevice(String rawData) {
+    if (!mounted) return; // Проверка, что экран еще существует
+    setState(() {
+      sensors = rawData
+          .split(';')
+          .where((s) => s.isNotEmpty)
+          .map((s) => SensorModel.fromString(s))
+          .toList();
+    });
+  }
+
+  void updateValuesFromDevice(String rawValues) {
+    setState(() {
+      var valuePairs = rawValues.split(';').where((s) => s.isNotEmpty);
+  
+      for (var pair in valuePairs) {
+        var parts = pair.split(':');
+        int id = int.parse(parts[0]); // ID всегда целое
+        String valStr = parts[1];     // Само значение 
+ 
+        int index = sensors.indexWhere((s) => s.id == id);
+        if (index != -1) {
+          if (sensors[index].valType == ValueType.boolean) {
+            sensors[index].value = (valStr == "1");
+          } else {
+            // ИСПОЛЬЗУЕМ double.parse ВМЕСТО int.parse
+            sensors[index].value = double.tryParse(valStr) ?? 0.0;
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Если внутри другого экрана (в Column), Scaffold лучше убрать
+    if (sensors.isEmpty) {
+      return Center(child: CircularProgressIndicator()); // Крутилка загрузки
+    }
+
+    return Column(
+      children:[ ListView.builder(
+        shrinkWrap: true, // Позволяет ListView занимать только нужное место
+        itemCount: sensors.length,
+        itemBuilder: (context, index) {
+          final sensor = sensors[index];
+          return Card(
+            elevation: 4,
+            margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  // Круглая подложка для иконки
+                  Container(
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _getIconColor(sensors[index].typeName).withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _getIcon(sensor.typeName),
+                      color: _getIconColor(sensor.typeName),
+                      size: 35,
+                    ),
+                  ),
+                  SizedBox(width: 15),
+                  
+                  // Название датчика
+                  Expanded(
+                    child: Text(
+                      sensor.label,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[400]),
+                    ),
+                  ),
+                  
+                  // ГЛАВНЫЙ АКЦЕНТ: Большое значение
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        sensor.value.toStringAsFixed(1), // Формат "25.5"
+                        style: TextStyle(
+                          fontSize: 20, // Делаем крупно!
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey[300],
+                        ),
+                      ),
+                      // Можно добавить мелкую подпись единицы измерения
+                      Text(
+                        _getUnit(sensor.typeName), 
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+  	]);
+  }
+  IconData _getIcon(String type) {
+    switch (type) {
+      case 't': return Icons.thermostat;
+      case 'h': return Icons.water_drop_rounded;
+      case 'l': return Icons.lightbulb; // Лампочка!
+      case 'sw': return Icons.power_settings_new_rounded;
+      default: return Icons.sensors_rounded;
+    }
+  }
+  Color _getIconColor(String type) {
+    switch (type) {
+      case 't': return Colors.red;//orangeAccent;
+      case 'h': return Colors.blueAccent;
+      case 'l': return Colors.yellow[700]!;
+      case 'sw': return Colors.greenAccent;
+      default: return Colors.blueGrey;
+    }
+  }
+  String _getUnit(String type) {
+    if (type == 't') return "°C";
+    if (type == 'h') return "%";
+    if (type == 'l') return "lux";
+    return "";
+  }
+}
+
 class BlufiPage extends StatefulWidget 
 {
   @override
   _BlufiPageState createState() => _BlufiPageState();
 }
+
 class _BlufiPageState extends State<BlufiPage> 
 {
   List<String> devices = [];
@@ -63,6 +244,8 @@ class _BlufiPageState extends State<BlufiPage>
 
   String syncTime = "--:--:--"; // Время
   String deviceTime = "--:--:--"; // Время
+  String deviceDate = "-- - -- - ----"; // Date
+  int timeZone = 3;
 
   double otaProgress = 0.0; // 0.0 to 1.0  
   bool isUpdating = false;
@@ -119,44 +302,55 @@ class _BlufiPageState extends State<BlufiPage>
 
           // Б. Обработка данных от датчиков (Custom Data)
           if (msg['key'] == 'receive_device_custom_data') {
-            String raw = msg['value']; // Например "Amb_temp:24.5"
+            String raw = msg['value']; 
             
             if (raw.startsWith("NET:")) {
               // Разрезаем строку по разделителям
               List<String> parts = raw.substring(4).split("|");
               if (parts.length == 4) {
                 setState(() {
-				  ipController.text = parts[0];
-				  maskController.text = parts[1];
-				  gwController.text = parts[2];
-				  isStatic = (parts[3] == "1"); 
-      
-				  addToLog("Режим сети: ${isStatic ? 'Static' : 'DHCP'}");
+                  ipController.text = parts[0];
+                  maskController.text = parts[1];
+                  gwController.text = parts[2];
+                  isStatic = (parts[3] == "1"); 
+              
+                  addToLog("Режим сети: ${isStatic ? 'Static' : 'DHCP'}");
     
                 });
               }
             }
 			else {
-              setState(() {
-                if (raw.startsWith("Amb_Temp:")) ambTemp = raw.split(":")[1];
-                if (raw.startsWith("Chip_Temp:")) chipTemp = raw.split(":")[1];
-                if (raw.startsWith("Lumin:")) lumin = raw.split(":")[1];
-                if (raw.startsWith("Time:")) {
-					deviceTime = raw.split(":")[1];
-					if (deviceTime.compareTo("Not sync")!=0)
-						deviceTime = deviceTime.replaceAll('_',':');
-				}
-                if (raw.startsWith("Time_sync_sntp:")) {
-					syncTime = raw.split(":")[1];
-					if (syncTime.compareTo("Not sync")!=0)
-						syncTime = syncTime.replaceAll('_',':');
-				}
-		        // Г. вывод логов на экран
-                addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
-                  // ... парсинг ...
-              });
-			}
+        setState(() {
+          if (raw.startsWith("Time:")) {
+            deviceTime = raw.replaceFirst("Time:", "");
           }
+          if (raw.startsWith("Date:")) deviceDate = raw.split(":")[1];
+          if (raw.startsWith("TZ:")) {
+            timeZone = int.parse(raw.split(":")[1]);
+            updateCityByOffset(timeZone); // Обновляем текст в UI
+            print("Часовой пояс устройства: $timeZone ($selectedCity)");
+          }
+          if (raw.startsWith("Time_sync_sntp:")) {
+            syncTime = raw.split(":")[1];
+            if (syncTime.compareTo("Not sync")!=0)
+              syncTime = syncTime.replaceAll('_',':');
+          }
+          if (raw.startsWith("Values:")) {
+            var data = raw.replaceFirst("Values:", ""); // Берем всё, что после палки
+            sensorScreenKey.currentState?.updateValuesFromDevice(data);
+          }
+          if (raw.startsWith("Sensors:")) {
+              // Убираем слово "Sensors:" и передаем остальное
+              String configData = raw.replaceFirst("Sensors:", "");
+              sensorScreenKey.currentState?.updateSensorsFromDevice(configData);
+          }
+          
+      // Г. вывод логов на экран
+          addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
+            // ... парсинг ...
+        });
+			}
+    }
 
 		  // В. Сканирование Wifi
 		  if (msg['key'] == 'wifi_info') {
@@ -176,24 +370,11 @@ class _BlufiPageState extends State<BlufiPage>
           }
 
 
-
         } catch (e) {
           print("Ошибка парсинга: $e");
         }
       },
       errorCallback: (err) => print("Ошибка: $err")
-    );
-  }
-
-  // Виджет одной карточки датчика
-  Widget sensorCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 4,
-      child: ListTile(
-        leading: Icon(icon, color: color, size: 30),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
-        trailing: Text(value, style: TextStyle(fontSize: 20, color: color, fontWeight: FontWeight.bold)),
-      ),
     );
   }
 
@@ -261,52 +442,14 @@ class _BlufiPageState extends State<BlufiPage>
             ),
 
 
-          // Если ПОДКЛЮЧЕНЫ - показываем "Термометр" и датчики
+          // Если ПОДКЛЮЧЕНЫ - показываем датчики
           if (isConnected)
             Expanded(
               child: ListView(
                 padding: EdgeInsets.all(10),
                 children: [
-                  sensorCard("Окружающая среда", "$ambTemp °C", Icons.thermostat, Colors.red),
-                  sensorCard("Температура чипа", "$chipTemp °C", Icons.memory, Colors.orange),
-                  sensorCard("Освещенность", "$lumin Lux", Icons.lightbulb, Colors.yellow[700]!),
-                  
-                  // "Красивый" визуальный индикатор (прогресс-бар как термометр)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
-                    child: Column(
-                      children: [
-                        Text("Термометр 0-50 °C"),
-                        LinearProgressIndicator(
-                          value: (double.tryParse(ambTemp) ?? 0) / 50, // Шкала до 50 градусов
-                          backgroundColor: Colors.grey[300],
-                          color: getDynamicColor(ambTemp),
-                          minHeight: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-				  //Ещё один термометер
-                  buildThermometerScale(double.tryParse(ambTemp) ?? 0),
-                  Column(
-                    children: [
-                      Icon(
-                        Icons.thermostat,
-                        size: 40,
-                        color: getDynamicColor(ambTemp), 
-                      ),
-                      Text(
-                        "$ambTemp°C",
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: getDynamicColor(ambTemp),
-                        ),
-                      ),
-                    ],
-                  ),
-				  buildElegantClock(),
-
+                  SensorScreen(),
+                  buildElegantClock(),
                   if (deviceTime.compareTo("Not sync")==0) Container(
                     color: Colors.amber.shade100,
                     padding: EdgeInsets.all(8),
@@ -314,14 +457,13 @@ class _BlufiPageState extends State<BlufiPage>
                       children: [
                         Icon(Icons.warning_amber_rounded, color: Colors.orange),
                         SizedBox(width: 10),
-                        Expanded(child: Text(
-						  "Время не синхронизировано!", 
+                        Expanded(child: Text( "Время не синхронизировано!", 
                           style: TextStyle(
                             fontSize: 14,
                             fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
                             color: Colors.grey[600],
                           ),
-						)),
+						            )),
                       ],
                     ),
                   )
@@ -333,14 +475,13 @@ class _BlufiPageState extends State<BlufiPage>
                       children: [
                         Icon(Icons.warning_amber_rounded, color: Colors.orange),
                         SizedBox(width: 10),
-                        Expanded(child: Text(
-						  "Время не синхронизировано!", 
+                        Expanded(child: Text( "Время не синхронизировано!", 
                           style: TextStyle(
                             fontSize: 14,
                             fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
                             color: Colors.grey[600],
                           ),
-						)),
+                        )),
                       ],
                     ),
                   )
@@ -557,8 +698,8 @@ class _BlufiPageState extends State<BlufiPage>
             children: [
               Text(deviceTime, // 12:45:05
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
- //             Text(deviceDate, // 14.03.2024
- //                 style: TextStyle(fontSize: 10, color: Colors.white54, letterSpacing: 1.1)),
+              Text(deviceDate, // 14.03.2024
+                  style: TextStyle(fontSize: 14, color: Colors.white54, letterSpacing: 1.1)),
             ],
           ),
           const SizedBox(width: 15),
@@ -737,7 +878,7 @@ class _BlufiPageState extends State<BlufiPage>
       Future.delayed(Duration(seconds: 2), () { 
 		  requestNetworkStatus();
 		  requestSyncTime();
-		  requestTZ(); 
+      requestSensors();
 	    }
 	  );
 
@@ -812,20 +953,20 @@ class _BlufiPageState extends State<BlufiPage>
       await blufi.sendCustomData(data: "GET_SYNC_TIME");
     }
   }
-  //Функция для запроса часового пояса
-  void requestTZ() async {
-    if (isConnected) {
-      print("Запрос часового пояса...");
-      // Отправляем простую текстовую команду
-      await blufi.sendCustomData(data: "GET_TZ");
-    }
-  }
   //Функция отправки команды запроса состояния сети
   void requestNetworkStatus() async {
     if (isConnected) {
       print("Запрос сетевого статуса...");
       // Отправляем простую текстовую команду
       await blufi.sendCustomData(data: "GET_NET");
+    }
+  }
+  //Функция запроса датчиков
+  void requestSensors() async {
+    if (isConnected) {
+      print("Запрос датчиков...");
+      // Отправляем простую текстовую команду
+      await blufi.sendCustomData(data: "GET_SENSORS");
     }
   }
   // Функция установки статического IP-адреса
@@ -980,5 +1121,16 @@ class _BlufiPageState extends State<BlufiPage>
       },
     );
   }
-
+  //Функция установки часового пояса
+  void updateCityByOffset(int offset) {
+    // Ищем первый ключ, значение которого равно пришедшему offset
+    String? foundCity = timezones.keys.firstWhere(
+      (key) => timezones[key] == offset,
+      orElse: () => "Неизвестно (UTC$offset)", // Если вдруг такого смещения нет в списке
+    );
+  
+    setState(() {
+      selectedCity = foundCity;
+    });
+  }
 }

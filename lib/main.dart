@@ -129,6 +129,7 @@ class SensorScreenState extends State<SensorScreen>
     return Column(
       children:[ ListView.builder(
         shrinkWrap: true, // Позволяет ListView занимать только нужное место
+        physics: NeverScrollableScrollPhysics(), // НЕ скроллиться самому!
         itemCount: sensors.length,
         itemBuilder: (context, index) {
           final sensor = sensors[index];
@@ -441,15 +442,14 @@ class _BlufiPageState extends State<BlufiPage>
               ),
             ),
 
-
           // Если ПОДКЛЮЧЕНЫ - показываем датчики
           if (isConnected)
             Expanded(
               child: ListView(
                 padding: EdgeInsets.all(10),
                 children: [
-                  SensorScreen(),
                   buildElegantClock(),
+                  SensorScreen(),
                   if (deviceTime.compareTo("Not sync")==0) Container(
                     color: Colors.amber.shade100,
                     padding: EdgeInsets.all(8),
@@ -467,25 +467,25 @@ class _BlufiPageState extends State<BlufiPage>
                       ],
                     ),
                   )
-		          else
-                  if (syncTime.compareTo("Not sync")==0) Container(
-                    color: Colors.amber.shade100,
-                    padding: EdgeInsets.all(8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                        SizedBox(width: 10),
-                        Expanded(child: Text( "Время не синхронизировано!", 
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
-                            color: Colors.grey[600],
-                          ),
-                        )),
-                      ],
-                    ),
-                  )
-		          else
+                  else
+                    if (syncTime.compareTo("Not sync")==0) Container(
+                      color: Colors.amber.shade100,
+                      padding: EdgeInsets.all(8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                          SizedBox(width: 10),
+                          Expanded(child: Text( "Время не синхронизировано!", 
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                              color: Colors.grey[600],
+                            ),
+                          )),
+                        ],
+                      ),
+                    )
+                  else
                     Text(
                       "Время последней\nсинхронизации: $syncTime",
                       style: TextStyle(
@@ -563,7 +563,7 @@ class _BlufiPageState extends State<BlufiPage>
                       child: Text("ПОДКЛЮЧИТЬ"),
                     ),
                   ],
-				  Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Параметры сети", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -655,9 +655,9 @@ class _BlufiPageState extends State<BlufiPage>
                       ),
                     ),
                   ),
-				  TextButton(onPressed: resetDevice, 
-					child: Text("Перезагрузить устройство")
-				  ),
+                  TextButton(onPressed: resetDevice, 
+                  child: Text("Перезагрузить устройство")
+                  ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                     icon: Icon(Icons.memory),

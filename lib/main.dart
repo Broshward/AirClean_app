@@ -5,6 +5,8 @@ import 'dart:typed_data';                 // Для работы с Uint8List
 import 'dart:convert';                    // Для работы с utf8.encode
 import 'package:flutter/services.dart';	//Для фиксации поворота
 import 'package:flutter/src/material/card_theme.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
 
 void main() async
 {
@@ -270,7 +272,7 @@ class _BlufiPageState extends State<BlufiPage>
   };
   String selectedCity = "Москва (UTC+3)"; // Дефолтное значение
 
-
+  BluetoothCharacteristic? commandCharacteristic;
 		  
   @override
   void initState() {
@@ -299,58 +301,15 @@ class _BlufiPageState extends State<BlufiPage>
           if (msg['key'] == 'gatt_disconnected') {
             print("Событие: Соединение разорвано");
             onConnectionLost();
-		  }
+		      }
 
           // Б. Обработка данных от датчиков (Custom Data)
           if (msg['key'] == 'receive_device_custom_data') {
             String raw = msg['value']; 
             
-            if (raw.startsWith("NET:")) {
-              // Разрезаем строку по разделителям
-              List<String> parts = raw.substring(4).split("|");
-              if (parts.length == 4) {
-                setState(() {
-                  ipController.text = parts[0];
-                  maskController.text = parts[1];
-                  gwController.text = parts[2];
-                  isStatic = (parts[3] == "1"); 
-              
-                  addToLog("Режим сети: ${isStatic ? 'Static' : 'DHCP'}");
-    
-                });
-              }
-            }
-			else {
         setState(() {
-          if (raw.startsWith("Time:")) {
-            deviceTime = raw.replaceFirst("Time:", "");
-          }
-          if (raw.startsWith("Date:")) deviceDate = raw.split(":")[1];
-          if (raw.startsWith("TZ:")) {
-            timeZone = int.parse(raw.split(":")[1]);
-            updateCityByOffset(timeZone); // Обновляем текст в UI
-            print("Часовой пояс устройства: $timeZone ($selectedCity)");
-          }
-          if (raw.startsWith("Time_sync_sntp:")) {
-            syncTime = raw.split(":")[1];
-            if (syncTime.compareTo("Not sync")!=0)
-              syncTime = syncTime.replaceAll('_',':');
-          }
-          if (raw.startsWith("Values:")) {
-            var data = raw.replaceFirst("Values:", ""); // Берем всё, что после палки
-            sensorScreenKey.currentState?.updateValuesFromDevice(data);
-          }
-          if (raw.startsWith("Sensors:")) {
-              // Убираем слово "Sensors:" и передаем остальное
-              String configData = raw.replaceFirst("Sensors:", "");
-              sensorScreenKey.currentState?.updateSensorsFromDevice(configData);
-          }
           
-      // Г. вывод логов на экран
-          addToLog("Получено: $raw"); // Видим всё, что шлет ESP32
-            // ... парсинг ...
         });
-			}
     }
 
 		  // В. Сканирование Wifi
@@ -387,7 +346,8 @@ class _BlufiPageState extends State<BlufiPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isConnected ? "Мониторинг ESP32" : "Поиск устройств"),
+        title: Text(isConnected ? lastConnectedAddress : "Поиск устройств"),
+        //title: Text(isConnected ? "Мониторинг ESP32" : "Поиск устройств"),
         backgroundColor: isConnected ? Colors.blueGrey : Colors.indigo,
         leading: isConnected 
           ? IconButton(icon: Icon(Icons.arrow_back), onPressed: disconnect) 
@@ -448,8 +408,8 @@ class _BlufiPageState extends State<BlufiPage>
               child: ListView(
                 padding: EdgeInsets.all(10),
                 children: [
-                  buildElegantClock(),
                   SensorScreen(),
+                  buildElegantClock(),
                   if (deviceTime.compareTo("Not sync")==0) Container(
                     color: Colors.amber.shade100,
                     padding: EdgeInsets.all(8),
@@ -487,7 +447,7 @@ class _BlufiPageState extends State<BlufiPage>
                     )
                   else
                     Text(
-                      "Время последней\nсинхронизации: $syncTime",
+                      "Последняя синхронизация\nвремени: $syncTime",
                       style: TextStyle(
                     	fontSize: 14,
                     	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
@@ -586,8 +546,7 @@ class _BlufiPageState extends State<BlufiPage>
                       });
                       // Если выключили статику — сразу шлем команду сброса на ESP32
                       if (!value) {
-                        blufi.sendCustomData(data: "SET_DHCP");
-                        addToLog("Переключение на DHCP...");
+                        sendCommand("SET_DHCP");
                       }
                     },
                   ),
@@ -810,9 +769,8 @@ class _BlufiPageState extends State<BlufiPage>
   }
 
   
-  // Функции startScan и connect остаются как были
   void startScan() async {
-	checkHardwareServices(); // Сначала проверяем железо
+    checkHardwareServices(); // Сначала проверяем железо
   
     print("Запуск поиска...");
     
@@ -864,35 +822,29 @@ class _BlufiPageState extends State<BlufiPage>
   }
 
   void connect(dynamic deviceAddress) async {
-    print("Подключение к: $deviceAddress");
+  try {
+    // 1. Сначала BluFi делает свою работу
+    await blufi.connectPeripheral(peripheralAddress: deviceAddress.toString());
+    
+    setState(() {
+      isConnected = true;
+      lastConnectedAddress = deviceAddress.toString();
+    });
 
-    try {
-      await blufi.connectPeripheral(peripheralAddress: deviceAddress.toString());
-	  
-      setState(() {
-        isConnected = true;
-        lastConnectedAddress = deviceAddress.toString(); // ЗАПОМНИЛИ
-      });
+    // 2. КРИТИЧЕСКИ ВАЖНО: Даем Android "продышаться" перед вторым коннектом
+    // Если броситься сразу — получим 133.
+    await Future.delayed(Duration(milliseconds: 1500)); 
+    setupFastSensors(deviceAddress.toString());
 
-	  // Даем 2 секунду на "прогрев" соединения и запрашиваем статус сети
-      Future.delayed(Duration(seconds: 2), () { 
-		  requestNetworkStatus();
-		  requestSyncTime();
+    Future.delayed(Duration(seconds: 3), () { 
+      requestNetworkStatus();
+      requestSyncTime();
       requestSensors();
-	    }
-	  );
-
-      print("Подключено!");
-	  addToLog("Успешно подключено!");
-    } catch (e) {
-      // Показываем SnackBar с советом
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Не удалось подключиться. Попробуйте ещё раз!")),
-      );
-      print("Не удалось подключиться: $e");
-	  addToLog("Не удалось подключиться $e!");
-    }
+    });
+  } catch (e) {
+    // Обработка ошибок
   }
+}
 
   void disconnect() async {
     print("Возврат к списку устройств...");
@@ -950,7 +902,7 @@ class _BlufiPageState extends State<BlufiPage>
     if (isConnected) {
       print("Запрос времени синхронизации...");
       // Отправляем простую текстовую команду
-      await blufi.sendCustomData(data: "GET_SYNC_TIME");
+      sendCommand("GET_SYNC_TIME");
     }
   }
   //Функция отправки команды запроса состояния сети
@@ -958,15 +910,16 @@ class _BlufiPageState extends State<BlufiPage>
     if (isConnected) {
       print("Запрос сетевого статуса...");
       // Отправляем простую текстовую команду
-      await blufi.sendCustomData(data: "GET_NET");
+      sendCommand("GET_NET");
     }
   }
   //Функция запроса датчиков
-  void requestSensors() async {
+  void requestSensors() {
     if (isConnected) {
       print("Запрос датчиков...");
       // Отправляем простую текстовую команду
-      await blufi.sendCustomData(data: "GET_SENSORS");
+      //await blufi.sendCustomData(data: "GET_SENSORS");
+      sendCommand("GET_SENSORS");
     }
   }
   // Функция установки статического IP-адреса
@@ -990,12 +943,11 @@ class _BlufiPageState extends State<BlufiPage>
   
     String cmd = "SET_STATIC:${ipController.text}|${maskController.text}|${gwController.text}";
     print("Отправка статики: $cmd");
-    await blufi.sendCustomData(data: cmd);
+    sendCommand(cmd);
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Настройки отправлены..."), backgroundColor: Colors.orange),
     );
-    addToLog("Отправка Static IP: ${ipController.text}");
   }
 
   // Удобная функция для добавления записи с меткой времени
@@ -1074,7 +1026,7 @@ class _BlufiPageState extends State<BlufiPage>
   void resetDevice() async {
     if (isConnected) {
       print("Программный сброс!...");
-      await blufi.sendCustomData(data: "RESET");
+      sendCommand("RESET");
 	}
   }
   //Функция загрузки обновления
@@ -1083,7 +1035,7 @@ class _BlufiPageState extends State<BlufiPage>
       print("Загрузка обновления прошивки...");
 	  isUpdating = true;
       // Отправляем простую текстовую команду
-      await blufi.sendCustomData(data: "START_OTA");
+      sendCommand("START_OTA");
     }
   }
   // Функция выбора часового пояса
@@ -1110,7 +1062,7 @@ class _BlufiPageState extends State<BlufiPage>
                   setState(() {
                     selectedCity = city;
                     int offset = timezones[city]!;
-                    blufi.sendCustomData(data:"SET_TZ:$offset");
+                    sendCommand("SET_TZ:$offset");
                   });
                   Navigator.pop(context); // Закрываем окно после выбора
                 },
@@ -1133,4 +1085,97 @@ class _BlufiPageState extends State<BlufiPage>
       selectedCity = foundCity;
     });
   }
+
+  // Вынесем поиск характеристик в отдельный метод
+  void _initializeService(BluetoothDevice device) async {
+    print("Настраиваем сервис датчиков для ${device.remoteId.str}");
+    List<BluetoothService> services = await device.discoverServices();
+    for (var service in services) {
+      if (service.uuid.toString().contains("00ff")) {
+        for (var char in service.characteristics) {
+          if (char.uuid.toString().contains("ff01")) {
+            await char.setNotifyValue(true);
+            char.lastValueStream.listen((value) {
+              String data = String.fromCharCodes(value);
+              print("FAST DATA RECEIVED: $data");
+              // Здесь обновляется UI
+              setState(() {
+                if (data.startsWith("Time:")) {
+                  deviceTime = data.replaceFirst("Time:", "");
+                }
+                if (data.startsWith("Date:")) deviceDate = data.split(":")[1];
+                if (data.startsWith("Values:")) {
+                  data = data.replaceFirst("Values:", ""); // Берем всё, что после палки
+                  sensorScreenKey.currentState?.updateValuesFromDevice(data);
+                }
+                if (data.startsWith("Sensors:")) {
+                    // Убираем слово "Sensors:" и передаем остальное
+                    String configData = data.replaceFirst("Sensors:", "");
+                    sensorScreenKey.currentState?.updateSensorsFromDevice(configData);
+                }
+                if (data.startsWith("NET:")) {
+                  // Разрезаем строку по разделителям
+                  List<String> parts = data.substring(4).split("|");
+                  if (parts.length == 4) {
+                    setState(() {
+                      ipController.text = parts[0];
+                      maskController.text = parts[1];
+                      gwController.text = parts[2];
+                      isStatic = (parts[3] == "1"); 
+                    });
+                  }
+                }
+                if (data.startsWith("TZ:")) {
+                  timeZone = int.parse(data.split(":")[1]);
+                  updateCityByOffset(timeZone); // Обновляем текст в UI
+                  print("Часовой пояс устройства: $timeZone ($selectedCity)");
+                }
+                if (data.startsWith("Time_sync_sntp:")) {
+                  syncTime = data.split(":")[1];
+                  if (syncTime.compareTo("Not sync")!=0)
+                    syncTime = syncTime.replaceAll('_',':');
+                }
+
+          
+              });
+            });
+          }
+
+          if (char.uuid.toString().contains("ff02")) {
+            commandCharacteristic = char;
+            print("Канал команд (Write) найден!");
+          }
+        }
+      }
+    }
+  }
+
+void setupFastSensors(String macAddress) async {
+  final device = BluetoothDevice.fromId(macAddress);
+
+  // Пытаемся подключиться с небольшим таймаутом и повтором
+  try {
+    // Перед коннектом можно попробовать вызвать disconnect, на случай если "хвост" висит
+    // await device.disconnect(); 
+    
+    await device.connect(autoConnect: false).timeout(Duration(seconds: 5));
+    _initializeService(device);
+  } catch (e) {
+    print("Ошибка FBP: $e. Пробуем переподключиться через секунду...");
+    await Future.delayed(Duration(seconds: 1));
+    // Рекурсивно пробуем еще раз или просто игнорим, если BluFi работает
+  }
+}
+  Future<void> sendCommand(String cmd) async {
+    if (commandCharacteristic == null) return;
+    try {
+      await commandCharacteristic!.write(utf8.encode(cmd))
+          .timeout(Duration(seconds: 2));
+      print("Команда $cmd подтверждена ESP32");
+    } catch (e) {
+      print("Ошибка доставки команды: $e");
+      // Можно показать пользователю легкий виброотклик или красный индикатор
+    }
+  }
+
 }

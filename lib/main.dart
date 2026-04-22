@@ -234,6 +234,7 @@ class _BlufiPageState extends State<BlufiPage>
 
   bool _passwordVisible = false; // По умолчанию пароль скрыт
   List<dynamic> wifiNetworks = [];
+  bool isScanningWifi = false; // Состояние поиска
   String? selectedSSID=null;
   TextEditingController passwordController = TextEditingController();
   
@@ -254,10 +255,6 @@ class _BlufiPageState extends State<BlufiPage>
   bool isUpdating = false;
 
   // Переменные для наших датчиков
-  String ambTemp = "--";
-  String chipTemp = "--";
-  String lumin = "--";
-
   String lastConnectedAddress = ""; // Храним MAC последнего успешного входа
 
   final Map<String, int> timezones = {
@@ -273,6 +270,8 @@ class _BlufiPageState extends State<BlufiPage>
   String selectedCity = "Москва (UTC+3)"; // Дефолтное значение
 
   BluetoothCharacteristic? commandCharacteristic;
+
+
 		  
   @override
   void initState() {
@@ -318,7 +317,7 @@ class _BlufiPageState extends State<BlufiPage>
             var net = msg['value'];
             String ssid = net['ssid'] ?? "Unknown";
             int rssi = int.parse(net['rssi'] ?? '0');
-          
+            isScanningWifi = false;
             setState(() {
               // Добавляем сеть в список, если её там еще нет
               if (!wifiNetworks.any((element) => element['ssid'] == ssid)) {
@@ -461,10 +460,16 @@ class _BlufiPageState extends State<BlufiPage>
                   
                   // Кнопка запуска сканирования
                   ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                    icon: Icon(Icons.search),
-                    label: Text("Найти Wi-Fi сети"),
-                    onPressed: scanWifi, 
+                    onPressed: isScanningWifi ? null : startWifiScan, // Блокируем, пока ищем
+                    icon: isScanningWifi 
+                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) 
+                      : Icon(Icons.wifi_find),
+                    label: Text(isScanningWifi ? "Поиск..." : "Найти сети"),
+                    style: ElevatedButton.styleFrom(
+                      // Если ищем - меняем цвет или делаем "вдавленной"
+                      backgroundColor: isScanningWifi ? Colors.grey[300] : Colors.blue[300],
+                      elevation: isScanningWifi ? 0 : 2,
+                    ),
                   ),
                   
                   // Если сети найдены — показываем выбор
@@ -807,9 +812,6 @@ class _BlufiPageState extends State<BlufiPage>
       setState(() {
         isConnected = false;
         // Сбрасываем данные, чтобы не вводить в заблуждение
-        ambTemp = "--"; 
-        chipTemp = "--";
-        lumin = "--";
       });
   
       // Возвращаемся на экран поиска
@@ -853,9 +855,6 @@ class _BlufiPageState extends State<BlufiPage>
     setState(() {
       isConnected = false;
       // Опционально очищаем данные датчиков, чтобы при новом входе не было старых цифр
-      ambTemp = "--";
-      chipTemp = "--";
-      lumin = "--";
       ipController = TextEditingController(text: "0.0.0.0");
       maskController = TextEditingController(text: "0.0.0.0");
       gwController = TextEditingController(text: "0.0.0.0");
@@ -876,10 +875,18 @@ class _BlufiPageState extends State<BlufiPage>
   }
 
   // Функция запроса сканирования сетей у ESP32
-  void scanWifi() async {
-    print("Запрос списка Wi-Fi у ESP32...");
-    setState(() => wifiNetworks.clear());
-    await blufi.requestDeviceWifiScan();
+  void startWifiScan() async {
+    setState(() => isScanningWifi = true); // Нажали!
+    
+    try {
+      await sendCommand("WIFI_SCAN"); // Посылаем команду в новую трубу
+      blufi.requestDeviceWifiScan();
+      
+      // Ждем немного или до прихода списка сетей
+      await Future.delayed(Duration(seconds: 10)); 
+    } finally {
+      setState(() => isScanningWifi = false); // Отпустили
+    }
   }
   
   // Функция отправки SSID и Пароля на ESP32

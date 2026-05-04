@@ -6,6 +6,8 @@ import 'dart:convert';                    // Для работы с utf8.encode
 import 'package:flutter/services.dart';	//Для фиксации поворота
 import 'package:flutter/src/material/card_theme.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart'; // Для форматирования времени
 
 
 void main() async
@@ -40,7 +42,86 @@ void main() async
 
 enum ValueType { float, integer, boolean }
 // Этот ключ — как "пульт управления" конкретным экземпляром экрана
-final GlobalKey<SensorScreenState> sensorScreenKey = GlobalKey<SensorScreenState>();
+//final GlobalKey<SensorScreenState> sensorScreenKey = GlobalKey<SensorScreenState>();
+
+
+class SensorChartPage extends StatefulWidget {
+  // Эти поля ДОЛЖНЫ быть здесь объявлены
+  final SensorModel sensor; 
+  final Function(String) onCommand;
+
+  // Конструктор теперь их видит
+  SensorChartPage({required this.sensor, required this.onCommand});
+
+  @override
+  _SensorChartPageState createState() => _SensorChartPageState();
+}
+
+class _SensorChartPageState extends State<SensorChartPage> {
+  @override
+  Widget build(BuildContext context) {
+    // Внутри State мы обращаемся к ним через widget.sensor и widget.onCommand
+    return Scaffold(
+      appBar: AppBar(title: Text("История: ${widget.sensor.label}")),
+      body: Column(
+        children: [
+          // ... тут твой код графика (LineChart) ...
+            Text("Последние значения", style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const SizedBox(height: 30),
+            AspectRatio(
+              aspectRatio: 1.7,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(show: true, drawVerticalLine: false),
+                  titlesData: FlTitlesData(
+                    // Настройка времени снизу
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
+                          return Text(DateFormat('HH:mm').format(date), style: TextStyle(fontSize: 10));
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: true, border: Border.all(color: Colors.black12)),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: widget.sensor.history.map((p) => FlSpot(p.time.millisecondsSinceEpoch.toDouble(), p.value)).toList(),
+                      isCurved: true,
+                      color: Colors.blueAccent,
+                      barWidth: 3,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(show: true), // Показывать точки замеров
+                      belowBarData: BarAreaData(show: true, color: Colors.blueAccent.withOpacity(0.1)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          // spots: widget.sensor.history.map(...).toList(),
+          
+          ElevatedButton(
+            onPressed: () => widget.onCommand("HIST:${widget.sensor.id}:144:2"),
+            child: Text("Запросить историю"),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ChartPoint 
+{
+  final DateTime time;
+  final double value;
+  ChartPoint(this.time, this.value);
+}
 
 class SensorModel 
 {
@@ -49,6 +130,7 @@ class SensorModel
   final String typeName;
   final String label;
   dynamic value; // Здесь будет лежать само значение (0.5, 10 или true)
+  List<ChartPoint> history = []; // Сюда парсер будет складывать "H|" пакеты
 
   SensorModel({
     required this.id,
@@ -67,155 +149,6 @@ class SensorModel
       typeName: parts[2],
       label: parts[3],
     );
-  }
-}
-
-class SensorScreen extends StatefulWidget 
-{
-  // Добавляем ключ в конструктор
-  SensorScreen() : super(key: sensorScreenKey); 
-  
-  @override
-  SensorScreenState createState() => SensorScreenState();
-}
-
-class SensorScreenState extends State<SensorScreen> 
-{
-  List<SensorModel> sensors = [];
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  void updateSensorsFromDevice(String rawData) {
-    if (!mounted) return; // Проверка, что экран еще существует
-    setState(() {
-      sensors = rawData
-          .split(';')
-          .where((s) => s.isNotEmpty)
-          .map((s) => SensorModel.fromString(s))
-          .toList();
-    });
-  }
-
-  void updateValuesFromDevice(String rawValues) {
-    setState(() {
-      var valuePairs = rawValues.split(';').where((s) => s.isNotEmpty);
-  
-      for (var pair in valuePairs) {
-        var parts = pair.split(':');
-        int id = int.parse(parts[0]); // ID всегда целое
-        String valStr = parts[1];     // Само значение 
- 
-        int index = sensors.indexWhere((s) => s.id == id);
-        if (index != -1) {
-          if (sensors[index].valType == ValueType.boolean) {
-            sensors[index].value = (valStr == "1");
-          } else {
-            // ИСПОЛЬЗУЕМ double.parse ВМЕСТО int.parse
-            sensors[index].value = double.tryParse(valStr) ?? 0.0;
-          }
-        }
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Если внутри другого экрана (в Column), Scaffold лучше убрать
-    if (sensors.isEmpty) {
-      return Center(child: CircularProgressIndicator()); // Крутилка загрузки
-    }
-
-    return Column(
-      children:[ ListView.builder(
-        shrinkWrap: true, // Позволяет ListView занимать только нужное место
-        physics: NeverScrollableScrollPhysics(), // НЕ скроллиться самому!
-        itemCount: sensors.length,
-        itemBuilder: (context, index) {
-          final sensor = sensors[index];
-          return Card(
-            elevation: 4,
-            margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  // Круглая подложка для иконки
-                  Container(
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _getIconColor(sensors[index].typeName).withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _getIcon(sensor.typeName),
-                      color: _getIconColor(sensor.typeName),
-                      size: 35,
-                    ),
-                  ),
-                  SizedBox(width: 15),
-                  
-                  // Название датчика
-                  Expanded(
-                    child: Text(
-                      sensor.label,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[400]),
-                    ),
-                  ),
-                  
-                  // ГЛАВНЫЙ АКЦЕНТ: Большое значение
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        sensor.value.toStringAsFixed(1), // Формат "25.5"
-                        style: TextStyle(
-                          fontSize: 20, // Делаем крупно!
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueGrey[300],
-                        ),
-                      ),
-                      // Можно добавить мелкую подпись единицы измерения
-                      Text(
-                        _getUnit(sensor.typeName), 
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-  	]);
-  }
-  IconData _getIcon(String type) {
-    switch (type) {
-      case 't': return Icons.thermostat;
-      case 'h': return Icons.water_drop_rounded;
-      case 'l': return Icons.lightbulb; // Лампочка!
-      case 'sw': return Icons.power_settings_new_rounded;
-      default: return Icons.sensors_rounded;
-    }
-  }
-  Color _getIconColor(String type) {
-    switch (type) {
-      case 't': return Colors.red;//orangeAccent;
-      case 'h': return Colors.blueAccent;
-      case 'l': return Colors.yellow[700]!;
-      case 'sw': return Colors.greenAccent;
-      default: return Colors.blueGrey;
-    }
-  }
-  String _getUnit(String type) {
-    if (type == 't') return "°C";
-    if (type == 'h') return "%";
-    if (type == 'l') return "lux";
-    return "";
   }
 }
 
@@ -271,6 +204,10 @@ class _BlufiPageState extends State<BlufiPage>
 
   BluetoothCharacteristic? commandCharacteristic;
 
+  List<SensorModel> sensors = [];
+
+  int viewMode = 0; // 0 - Поиск, 1 - Мониторинг, 2 - График
+  SensorModel? selectedSensor; // Датчик, график которого мы сейчас смотрим
 
 		  
   @override
@@ -306,9 +243,6 @@ class _BlufiPageState extends State<BlufiPage>
           if (msg['key'] == 'receive_device_custom_data') {
             String raw = msg['value']; 
             
-        setState(() {
-          
-        });
     }
 
 		  // В. Сканирование Wifi
@@ -339,14 +273,9 @@ class _BlufiPageState extends State<BlufiPage>
 
   @override
   Widget build(BuildContext context) {
-    const double minTemp = 0;
-    const double maxTemp = 50;
-    const double step = 5; // Шаг цифр: 10, 15, 20...
-
     return Scaffold(
       appBar: AppBar(
         title: Text(isConnected ? lastConnectedAddress : "Поиск устройств"),
-        //title: Text(isConnected ? "Мониторинг ESP32" : "Поиск устройств"),
         backgroundColor: isConnected ? Colors.blueGrey : Colors.indigo,
         leading: isConnected 
           ? IconButton(icon: Icon(Icons.arrow_back), onPressed: disconnect) 
@@ -407,57 +336,15 @@ class _BlufiPageState extends State<BlufiPage>
               child: ListView(
                 padding: EdgeInsets.all(10),
                 children: [
-                  SensorScreen(),
-                  buildElegantClock(),
-                  if (deviceTime.compareTo("Not sync")==0) Container(
-                    color: Colors.amber.shade100,
-                    padding: EdgeInsets.all(8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                        SizedBox(width: 10),
-                        Expanded(child: Text( "Время не синхронизировано!", 
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
-                            color: Colors.grey[600],
-                          ),
-						            )),
-                      ],
-                    ),
-                  )
-                  else
-                    if (syncTime.compareTo("Not sync")==0) Container(
-                      color: Colors.amber.shade100,
-                      padding: EdgeInsets.all(8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                          SizedBox(width: 10),
-                          Expanded(child: Text( "Время не синхронизировано!", 
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
-                              color: Colors.grey[600],
-                            ),
-                          )),
-                        ],
-                      ),
-                    )
-                  else
-                    Text(
-                      "Последняя синхронизация\nвремени: $syncTime",
-                      style: TextStyle(
-                    	fontSize: 14,
-                    	fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
-                    	color: Colors.grey[600],
-                      ),
-                    ),
+                  //SensorScreen(sensors: sensors),
+                  buildSensorCards(),
                   Divider(height: 40, thickness: 2),
+                  buildElegantClock(),
+                  buildTimeSync(),
+                  Divider(height: 40, thickness: 2),
+
                   Text("Настройка Wi-Fi (DHCP)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  
                   const SizedBox(height: 10),
-                  
                   // Кнопка запуска сканирования
                   ElevatedButton.icon(
                     onPressed: isScanningWifi ? null : startWifiScan, // Блокируем, пока ищем
@@ -539,7 +426,7 @@ class _BlufiPageState extends State<BlufiPage>
                       ),
                     ],
                   ),
-				  // Переключатель режима
+                  // Переключатель режима
                   SwitchListTile(
                     title: Text("Использовать статический IP"),
                     subtitle: Text(isStatic ? "Ручная настройка" : "Получать по DHCP автоматически"),
@@ -587,7 +474,6 @@ class _BlufiPageState extends State<BlufiPage>
                       filled: !isStatic,
                     ),
                   ),
-                  
                   if (isStatic)
                     ElevatedButton(
                       onPressed: applyStaticIP,
@@ -596,7 +482,7 @@ class _BlufiPageState extends State<BlufiPage>
                     ),
 
 
-				  Divider(height: 40, thickness: 2),
+                  Divider(height: 40, thickness: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -628,18 +514,42 @@ class _BlufiPageState extends State<BlufiPage>
                     label: Text("Обновить ПО"),
                     onPressed: updateFlash, 
                   ),
-                  if (isUpdating) 
-                    LinearProgressIndicator(
-                      value: otaProgress,
-                      backgroundColor: Colors.white10,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.cyanAccent),
-                    ),
                 ],
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget buildTimeSync() {
+    if (deviceTime.compareTo("Not sync")==0) 
+      return Container(
+        color: Colors.amber.shade100,
+        padding: EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 10),
+            Expanded(child: Text( "Время не синхронизировано!", 
+              style: TextStyle(
+                fontSize: 14,
+                fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+                color: Colors.grey[600],
+              ),
+            )),
+          ],
+        ),
+      );
+    else
+      return Text(
+        "Последняя синхронизация\nвремени: $syncTime",
+        style: TextStyle(
+        fontSize: 14,
+        fontFamily: 'monospace', // Моноширинный шрифт круто смотрится для часов
+        color: Colors.grey[600],
+        ),
+      );
   }
 
   Widget buildElegantClock() {
@@ -693,83 +603,51 @@ class _BlufiPageState extends State<BlufiPage>
     );
   }
 
-  Widget buildThermometerScale(double currentTemp) {
-    const double minTemp = 00;
-    const double maxTemp = 50;
-    const double step = 5; // Шаг цифр: 10, 15, 20...
-  
-    return Column(
-      children: [
-        // 1. Сама цветная полоска (твой прогресс-бар)
-        Container(
-          height: 12,
-          width: 300,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            gradient: LinearGradient(colors: [Colors.blue, Colors.green, Colors.red]),
-          ),
-          child: 
-            Stack(
-              clipBehavior: Clip.none, // Чтобы свечение не обрезалось краями
-              children: [
-                
-                AnimatedPositioned(
-                  duration: Duration(milliseconds: 300), // Плавное движение за 0.3 сек
-                  curve: Curves.easeOutCubic,
-                  left: ((currentTemp - minTemp) / (maxTemp - minTemp) * 300) - 2, // -2 для центровки 4-пиксельного бара
-                  top: -2, // Смещение вверх, чтобы перекрывал шкалу
-                  child: buildGlowPointer(currentTemp),
-                ),
-              ],
-            )
-        ),
-        SizedBox(height: 8),
-        // 2. Шкала с цифрами
-        Container(
-          width: 300,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(((maxTemp - minTemp) / step).toInt() + 1, (index) {
-              double val = minTemp + (index * step);
-              return Column(
-                children: [
-                  Container(width: 1, height: 5, color: Colors.grey), // Риска
-                  Text(
-                    "${val.toInt()}",
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                  ),
-                ],
-              );
-            }),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget buildGlowPointer(double currentTemp) {
-    // Получаем цвет в зависимости от температуры (наша старая функция)
-    Color pointerColor = getDynamicColor(currentTemp.toString());
-    
-    return Container(
-      width: 4,
-      height: 16, // Чуть выше шкалы, чтобы выделялся
-      decoration: BoxDecoration(
-        color: Colors.white, // Сам стержень белый для контраста
-        borderRadius: BorderRadius.circular(2),
-        boxShadow: [
-          BoxShadow(
-            color: pointerColor.withOpacity(0.8), // Свечение в цвет температуры
-            blurRadius: 10,  // Насколько сильно рассеивается свет
-            spreadRadius: 2, // Насколько широкое пятно
-          ),
-          BoxShadow(
-            color: pointerColor.withOpacity(0.5),
-            blurRadius: 20,
-            spreadRadius: 4,
-          ),
+  Widget buildSensorCards() {
+    if (sensors.isEmpty) {
+      return Column(
+        children: const [
+          SizedBox(height: 50),
+          CircularProgressIndicator(), // Крутилка
+          SizedBox(height: 20),
+          Text("Ожидание данных от устройства...", 
+               style: TextStyle(color: Colors.grey)),
         ],
-      ),
+      );
+
+    }
+
+    return Column(
+      children: sensors.map((sensor) {
+        return InkWell(
+          onTap: () {
+            // Открываем график и передаем ссылку на нашу функцию отправки
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SensorChartPage(
+                  sensor: sensor,
+                  onCommand: sendCommand, 
+                ),
+              ),
+            );
+          },
+          child: Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            elevation: 4,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            child: ListTile(
+              leading: Icon(_getIcon(sensor.typeName), color: _getIconColor(sensor.typeName), size: 30),
+              title: Text(sensor.label, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text("ID: ${sensor.id}"),
+              trailing: Text(
+                "${sensor.value.toStringAsFixed(1)}",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _getIconColor(sensor.typeName)),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -1113,12 +991,12 @@ class _BlufiPageState extends State<BlufiPage>
                 if (data.startsWith("Date:")) deviceDate = data.split(":")[1];
                 if (data.startsWith("Values:")) {
                   data = data.replaceFirst("Values:", ""); // Берем всё, что после палки
-                  sensorScreenKey.currentState?.updateValuesFromDevice(data);
+                  updateValuesFromDevice(data);
                 }
                 if (data.startsWith("Sensors:")) {
                     // Убираем слово "Sensors:" и передаем остальное
                     String configData = data.replaceFirst("Sensors:", "");
-                    sensorScreenKey.currentState?.updateSensorsFromDevice(configData);
+                    updateSensorsFromDevice(configData);
                 }
                 if (data.startsWith("NET:")) {
                   // Разрезаем строку по разделителям
@@ -1142,8 +1020,27 @@ class _BlufiPageState extends State<BlufiPage>
                   if (syncTime.compareTo("Not sync")!=0)
                     syncTime = syncTime.replaceAll('_',':');
                 }
+                //History sensors<D-2>
+                if (data.startsWith("H|")) {
+                  // Пакет: H|timestamp|id:value
+                  // Например: H|1713800000|1:25.4
+                  List<String> parts = data.split('|');
+                  if (parts.length >= 3) {
+                    int? ts = int.tryParse(parts[1]);
+                    if (ts != null) {
+                      DateTime time = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+                      
+                      // Парсим ID и значение (1:25.4)
+                      List<String> valParts = parts[2].split(':');
+                      int id = int.parse(valParts[0]);
+                      double val = double.parse(valParts[1]);
 
-          
+                      // Вызываем метод обновления истории
+                      updateSensorHistory(id, ChartPoint(time, val));
+                    }
+                  }
+                }
+
               });
             });
           }
@@ -1185,4 +1082,84 @@ void setupFastSensors(String macAddress) async {
     }
   }
 
+  void updateValuesFromDevice(String rawValues) {
+    setState(() {
+      var valuePairs = rawValues.split(';').where((s) => s.isNotEmpty);
+  
+      for (var pair in valuePairs) {
+        var parts = pair.split(':');
+        int id = int.parse(parts[0]); // ID всегда целое
+        String valStr = parts[1];     // Само значение 
+ 
+        int index = sensors.indexWhere((s) => s.id == id);
+        if (index != -1) {
+          if (sensors[index].valType == ValueType.boolean) {
+            sensors[index].value = (valStr == "1");
+          } else {
+            // ИСПОЛЬЗУЕМ double.parse ВМЕСТО int.parse
+            sensors[index].value = double.tryParse(valStr) ?? 0.0;
+          }
+        }
+      }
+    });
+  }
+
+  void updateSensorsFromDevice(String rawData) {
+    if (!mounted) return; // Проверка, что экран еще существует
+    setState(() {
+      sensors = rawData
+          .split(';')
+          .where((s) => s.isNotEmpty)
+          .map((s) => SensorModel.fromString(s))
+          .toList();
+    });
+  }
+
+  IconData _getIcon(String type) {
+    switch (type) {
+      case 't': return Icons.thermostat;
+      case 'h': return Icons.water_drop_rounded;
+//      case 'l': return Icons.lightbulb; // Лампочка!
+      case 'l': return Icons.light_mode;
+      case 'sw': return Icons.power_settings_new_rounded;
+      default: return Icons.sensors_rounded;
+//      case 'T': return Icons.thermostat;
+//      case 'H': return Icons.water_drop;
+//      case 'P': return Icons.speed;
+//      case 'B': return Icons.toggle_on;
+//      default: return Icons.sensors;
+
+    }
+  }
+
+  Color _getIconColor(String type) {
+    switch (type) {
+      case 't': return Colors.red;//orangeAccent;
+      case 'h': return Colors.blueAccent;
+      case 'l': return Colors.yellow[700]!;
+      case 'sw': return Colors.greenAccent;
+      default: return Colors.blueGrey;
+    }
+  }
+
+  void updateSensorHistory(int id, ChartPoint point) {
+    setState(() {
+      // Ищем датчик в нашем основном списке
+      int index = sensors.indexWhere((s) => s.id == id);
+      if (index != -1) {
+        // Проверяем, нет ли уже такой точки (по времени), чтобы не дублировать
+        bool exists = sensors[index].history.any((p) => p.time == point.time);
+        if (!exists) {
+          sensors[index].history.add(point);
+          // Сортируем по времени, чтобы график не "ломался"
+          sensors[index].history.sort((a, b) => a.time.compareTo(b.time));
+          
+          // Ограничиваем историю (например, последние 200 точек), чтобы не ело память
+          if (sensors[index].history.length > 200) {
+            sensors[index].history.removeAt(0);
+          }
+        }
+      }
+    });
+  }
 }
